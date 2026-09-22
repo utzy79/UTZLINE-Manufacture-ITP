@@ -38,9 +38,23 @@
 // carried over unchanged. Site Measure/Viewer's own level list, and
 // Install ITP's own level list, were both updated to also exclude
 // "itp-manufacture" by name, the same way they already excluded "itp".)
+//
+// v2, 2026-09-22 (same day): flat-project support, mirroring Install ITP
+// v9 -- a project created by UTZLINE Projects v9+ (Project Saves/Floor
+// Plans/, joinery-items.json, no real Level/Room folders) now works here
+// too: Levels/Rooms read from those files, the joinery-item list built
+// from joinery-items.json ("+ New Joinery Item" hidden -- only UTZLINE
+// Projects creates items), and this app's own flat-project checklist/PDF
+// data lives in Project Saves/UTZLINE ITP/Manufacture ITP/ and PDF Files/
+// UTZLINE ITP/Manufacture ITP/. Unlike Install ITP, this app's own
+// "itp-manufacture" folder name is unchanged -- it was never ambiguous, so
+// there's no rename/migration step here; this app's own level-list
+// exclusion now additionally excludes Install ITP's renamed "itp-install"
+// folder alongside its existing "itp"/"itp-manufacture" exclusions. A
+// LEGACY (folder-based) project's behaviour is otherwise unchanged.
 
 var ICON_VERSION = "v1";
-var CACHE_NAME = "utzline-manufacture-itp-cache-v1";
+var CACHE_NAME = "utzline-manufacture-itp-cache-v2";
 
 var PRECACHE_URLS = [
   "./",

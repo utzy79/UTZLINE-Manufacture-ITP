@@ -1,8 +1,10 @@
 # UTZLINE Manufacture ITP — installable app
 
-**Current version: v1** (its own independent version line, separate from
+**Current version: v2** (its own independent version line, separate from
 Site Measure/Viewer's and from Install ITP's — bump this line every time
 a new build ships.)
+
+**v2 (2026-09-22):** flat-project support, mirroring Install ITP v9 — a project created by UTZLINE Projects v9+ (no real Level/Room folders; Project Saves/Floor Plans/ + joinery-items.json instead) now works here too. Levels/Rooms are read from those files, the joinery-item list is built from joinery-items.json ("+ New Joinery Item" is hidden -- only UTZLINE Projects creates items), and this app's flat-project checklist/PDF data lives in `Project Saves/UTZLINE ITP/Manufacture ITP/` and `PDF Files/UTZLINE ITP/Manufacture ITP/`. A LEGACY (folder-based) project's behaviour is unchanged. Unlike Install ITP, this app's own `itp-manufacture` folder name is unchanged (it was never ambiguous) -- its own level-list exclusion now additionally excludes Install ITP's renamed `itp-install` folder.
 
 This folder is the self-contained, installable **UTZLINE Manufacture
 ITP** app — a fourth app in the same family as **UTZLINE Site Measure**
@@ -75,12 +77,14 @@ saved" below).
 
 ## Where things are saved
 
+**LEGACY (folder-based) project:**
+
 ```
 <Projects folder>/
   <Project>/
     project-meta.json          <- written by Site Measure, read-only here
     <Level>/...                <- Site Measure's own level folders
-    itp/                       <- Install ITP's own folder (untouched by this app)
+    itp-install/               <- Install ITP's own folder (untouched by this app)
     itp-manufacture/           <- this app's own folder, project-wide
       <Level>/
         <Room>/
@@ -89,17 +93,42 @@ saved" below).
 ```
 
 The `itp-manufacture` folder sits directly under the **project's** own
-folder, as a sibling of the level folders and of Install ITP's `itp`
-folder — not nested inside any one level — so every joinery item across
-the whole project ends up under one place, itself organised by level
-and room to mirror the plan. **Deliberately kept separate from Install
-ITP's `itp` folder** so the two stages' checklists for the same joinery
-item never collide or overwrite one another; a given joinery number can
-have both a manufacture checklist and an install checklist at once,
-each living in its own folder. Site Measure/Viewer's own level list,
-and Install ITP's own level list, both know to skip folders literally
-named `itp` or `itp-manufacture` so neither ever shows up mislabeled as
-if it were a level.
+folder, as a sibling of the level folders and of Install ITP's
+`itp-install` folder — not nested inside any one level — so every
+joinery item across the whole project ends up under one place, itself
+organised by level and room to mirror the plan. **Deliberately kept
+separate from Install ITP's own folder** so the two stages' checklists
+for the same joinery item never collide or overwrite one another; a
+given joinery number can have both a manufacture checklist and an
+install checklist at once, each living in its own folder. Site
+Measure/Viewer's own level list, UTZLINE Projects' own level list, and
+Install ITP's own level list all know to skip folders literally named
+`itp`, `itp-install` (Install ITP's folder, old name and new — renamed
+2026-09-22), or `itp-manufacture` so none of them ever shows up
+mislabeled as if it were a level.
+
+**FLAT project** (created by UTZLINE Projects v9+ — no real Level/Room
+folders at all):
+
+```
+<Projects folder>/
+  <Project>/
+    project-meta.json
+    joinery-items.json                          <- written by UTZLINE Projects, read-only here
+    Project Saves/
+      Floor Plans/<Project> - <Level>.json       <- one file per Level (rooms/markers inside)
+      UTZLINE ITP/Manufacture ITP/
+        <Level> - <Room> - <Joinery Item>.json   <- this item's saved checklist state
+    PDF Files/
+      UTZLINE ITP/Manufacture ITP/
+        <Level> - <Room> - <Joinery Item>_<timestamp>.pdf
+```
+
+One shared folder for the whole project (not per-Level/Room) since the
+filename itself already carries the full Level/Room/Item key. "+ New
+Joinery Item" is hidden for a flat project — only UTZLINE Projects
+creates joinery items — but every item it has created shows up here the
+moment it exists, even before its checklist has been touched.
 
 ## Getting this installed as its own app
 
