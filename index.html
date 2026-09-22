@@ -1,0 +1,2333 @@
+<!DOCTYPE html>
+<html lang="en">
+<meta charset="utf-8">
+<head>
+<!--
+  UTZLINE Manufacture ITP -- pre-delivery/pre-dispatch joinery checklists.
+
+  A fourth, separate app in the same family as UTZLINE Site Measure (the
+  editor), UTZLINE Viewer (the read-only browser), and UTZLINE ITP -- which,
+  per UTZLINE Data Standard v1's 2026-09-21 pipeline clarification, is now
+  specifically the INSTALL-stage ITP app; this app is its sibling, the
+  MANUFACTURE-stage one, used by the factory/workshop before dispatch
+  rather than onsite after install. Forked directly from the Install ITP
+  codebase (same checklist/signature/PDF-export machinery, same folder
+  conventions) with its own identity (name, icon colour, cache) and its own
+  checklist content, per Andrew's own "PRE DELIVERY - CHECKLIST" template.
+  It reuses the SAME Projects folder those other apps already use -- the
+  same project/level/room folder shape, browsed the same read-only way the
+  Viewer already does -- so nothing about how a project is organized has to
+  change to start using this. It is NOT built from the shared source.html
+  the editor/Viewer share, for the same reason Install ITP isn't: a
+  checklist is a form, not a plan-drawing canvas.
+
+  ---- Data it reads ----
+  - <ProjectsRoot>/<Project>/project-meta.json -- {no, name, contractor},
+    written by Site Measure's own "+ New Project" flow (or its "Project
+    Info" button on an existing project). Read-only here: this app never
+    writes to it. A project with no file yet (created before this feature
+    existed, or "Skip for now" was chosen) just shows blank fields on the
+    checklist's title block rather than an error.
+  - <ProjectsRoot>/<Project>/<Level>/<Room> -- the room folder itself is
+    only ever used to confirm the room exists and to read its name; this
+    app never opens or writes the room's own saves/pdfs/backup content.
+
+  ---- Data it owns ----
+  - <ProjectsRoot>/<Project>/itp-manufacture/<Level>/<Room>/<joinery-no>.json
+    -- one file per joinery item, the checklist's own saved state (see
+    BLANK_CHECKLIST below for its shape). The "itp-manufacture" folder sits
+    directly under the PROJECT's own folder (a sibling of the level folders
+    AND of the existing Install ITP app's own "itp" folder, not nested
+    inside either) with its own Level/Room subfolders mirroring the plan's
+    own structure -- deliberately project-wide rather than per-level, and
+    deliberately its own separate top-level folder from Install ITP's
+    "itp", so the two stages' checklists for the same joinery item never
+    collide or overwrite each other. Site Measure's own level list excludes
+    both "itp" and "itp-manufacture" by name (see listExistingLevels' own
+    comment in source.html), and Install ITP's own level list was updated
+    the same way, so this folder never shows up mislabeled as a level in
+    any of the other apps.
+  - <ProjectsRoot>/<Project>/itp-manufacture/<Level>/<Room>/<joinery-no>_<timestamp>.pdf
+    -- one file per PDF export (each export adds a new timestamped file,
+    same convention as Site Measure's own Save-PDF and batch-export
+    actions, rather than overwriting the previous export).
+
+  A joinery item's checklist state autosaves shortly after any change
+  (debounced) and also saves immediately on the explicit Save button and
+  right before a PDF export, so leaving mid-edit or closing the tab loses
+  at most a few seconds of typing, never the item itself.
+-->
+<title>UTZLINE Manufacture ITP</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="manifest" href="./manifest.json?v=v1">
+<meta name="theme-color" content="#0d1411">
+<link rel="icon" type="image/png" sizes="512x512" href="./icons/icon-512.png?v=v1">
+<link rel="apple-touch-icon" href="./icons/icon-192.png?v=v1">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="UTZLINE Manufacture ITP">
+<style>
+@font-face{font-family:'IBM Plex Mono';font-style:normal;font-weight:500;src:url('./mono.woff2') format('woff2');}
+@font-face{font-family:'IBM Plex Sans';font-style:normal;font-weight:500;src:url('./sans.woff2') format('woff2');}
+
+:root{
+  --surface-0:#eef0ee;
+  --surface-1:#ffffff;
+  --surface-2:#dde2e0;
+  --border-strong:#aab3af;
+  --text-primary:#1b2422;
+  --text-secondary:#5c6864;
+  --accent:#7c3fd1;
+  --accent-ink:#5a2ba0;
+  --accent-soft:#ece1fb;
+  --danger:#c8391c;
+  --info:#1c6fd1;
+  --info-ink:#0f4f9e;
+  --info-soft:#dbe9fb;
+  --shadow:0 10px 30px rgba(0,0,0,.18);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --surface-0:#0d1411;
+    --surface-1:#131b17;
+    --surface-2:#0a100d;
+    --border-strong:#2c3a33;
+    --text-primary:#e9edea;
+    --text-secondary:#93a29a;
+    --accent:#b98cf5;
+    --accent-ink:#e6d4fc;
+    --accent-soft:#2a1f45;
+    --danger:#ff6a5a;
+    --info:#5b9bf2;
+    --info-ink:#bcd9fb;
+    --info-soft:#122a45;
+  }
+}
+:root[data-theme="dark"]{
+  --surface-0:#0d1411;
+  --surface-1:#131b17;
+  --surface-2:#0a100d;
+  --border-strong:#2c3a33;
+  --text-primary:#e9edea;
+  --text-secondary:#93a29a;
+  --accent:#b98cf5;
+  --accent-ink:#e6d4fc;
+  --accent-soft:#2a1f45;
+  --danger:#ff6a5a;
+  --info:#5b9bf2;
+  --info-ink:#bcd9fb;
+  --info-soft:#122a45;
+}
+*{box-sizing:border-box;}
+html,body{margin:0; padding:0; height:100%;}
+body{
+  font-family:'IBM Plex Sans',Arial,sans-serif;
+  background:var(--surface-0); color:var(--text-primary);
+  display:flex; flex-direction:column; min-height:100%;
+}
+button{font-family:inherit;}
+header{
+  display:flex; align-items:center; gap:10px;
+  padding:12px 16px; border-bottom:1px solid var(--border-strong);
+  background:var(--surface-1); position:sticky; top:0; z-index:20;
+}
+header .brand-icon{ width:28px; height:28px; border-radius:6px; flex:none; }
+header .brand-text{ font-weight:700; letter-spacing:.02em; font-size:16px; }
+header .brand-text b{ color:var(--accent); }
+header .crumbs{
+  margin-left:auto; font-size:12px; color:var(--text-secondary);
+  font-family:'IBM Plex Mono',monospace; text-align:right; max-width:60%;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+main{ flex:1; padding:16px; max-width:820px; width:100%; margin:0 auto; }
+.screen{ display:none; }
+.screen.active{ display:block; }
+h2{ font-size:17px; margin:0 0 4px; }
+p.hint{ font-size:13px; color:var(--text-secondary); margin:0 0 16px; line-height:1.5; }
+.mbtn{
+  font:inherit; font-size:13.5px; padding:9px 14px; border-radius:8px;
+  border:1px solid var(--border-strong); background:var(--surface-1);
+  color:var(--text-primary); cursor:pointer;
+}
+.mbtn:hover{ background:var(--surface-2); }
+.mbtn-accent{ background:var(--accent); border-color:var(--accent-ink); color:#04140b; font-weight:600; }
+.mbtn-accent:hover{ filter:brightness(1.08); }
+.mbtn-danger{ color:var(--danger); border-color:var(--danger); }
+.mbtn[disabled]{ opacity:.5; cursor:default; }
+.actions-row{ display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }
+.back-link{
+  background:none; border:none; color:var(--text-secondary); cursor:pointer;
+  font:inherit; font-size:13px; padding:4px 0 14px; display:block;
+}
+.back-link:hover{ color:var(--text-primary); }
+.list{ display:flex; flex-direction:column; gap:8px; margin-bottom:14px; }
+.list-row{
+  display:flex; align-items:center; gap:10px; width:100%;
+  padding:12px 14px; border-radius:9px; border:1px solid var(--border-strong);
+  background:var(--surface-1); color:var(--text-primary); cursor:pointer;
+  font:inherit; font-size:14px; text-align:left;
+}
+.list-row:hover{ border-color:var(--accent); }
+.list-row .row-main{ flex:1; min-width:0; }
+.list-row .row-title{ font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.list-row .row-sub{ font-size:12px; color:var(--text-secondary); margin-top:2px; }
+.list-row .row-chip{
+  font-size:11px; padding:3px 8px; border-radius:999px; flex:none;
+  border:1px solid var(--border-strong); color:var(--text-secondary);
+}
+.list-row .row-chip.done{ background:var(--accent-soft); border-color:var(--accent); color:var(--accent-ink); }
+.list-row .row-chip.warn{ border-color:var(--danger); color:var(--danger); }
+.list-row.artifact-row{ border-style:dashed; }
+.empty-note{ font-size:13px; color:var(--text-secondary); padding:14px 0; }
+
+/* ---- title block ---- */
+.title-block{
+  border:1px solid var(--border-strong); border-radius:10px; overflow:hidden;
+  margin-bottom:18px; background:var(--surface-1);
+}
+.title-block .tb-head{
+  background:var(--surface-2); padding:10px 14px; font-weight:700; font-size:14px;
+  letter-spacing:.03em;
+}
+.tb-grid{
+  display:grid; grid-template-columns:1fr 1fr; gap:0;
+}
+.tb-field{ padding:9px 14px; border-top:1px solid var(--border-strong); }
+.tb-field:nth-child(odd){ border-right:1px solid var(--border-strong); }
+.tb-field .tb-label{ font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--text-secondary); }
+.tb-field .tb-value{ font-size:13.5px; margin-top:2px; word-break:break-word; }
+.tb-field .tb-value.empty{ color:var(--text-secondary); font-style:italic; }
+@media (max-width:520px){ .tb-grid{ grid-template-columns:1fr; } .tb-field:nth-child(odd){ border-right:none; } }
+
+/* ---- checklist rows ---- */
+.check-row{
+  border:1px solid var(--border-strong); border-radius:9px; padding:10px 12px;
+  margin-bottom:8px; background:var(--surface-1);
+}
+.check-row .cr-top{ display:flex; align-items:flex-start; gap:10px; }
+.check-row .cr-num{
+  flex:none; width:22px; height:22px; border-radius:6px; background:var(--surface-2);
+  color:var(--text-secondary); font-size:11px; font-family:'IBM Plex Mono',monospace;
+  display:flex; align-items:center; justify-content:center; margin-top:1px;
+}
+.check-row .cr-text{ flex:1; font-size:13.5px; line-height:1.4; }
+.tri{ display:flex; gap:6px; margin:8px 0 6px 32px; }
+.tri button{
+  flex:1; font:inherit; font-size:12px; font-weight:600; padding:6px 0;
+  border-radius:6px; border:1px solid var(--border-strong); background:var(--surface-0);
+  color:var(--text-secondary); cursor:pointer;
+}
+.tri button.sel-yes.selected{ background:var(--accent-soft); border-color:var(--accent); color:var(--accent-ink); }
+.tri button.sel-no.selected{ background:#3a1712; border-color:var(--danger); color:var(--danger); }
+.tri button.sel-na.selected{ background:var(--info-soft); border-color:var(--info); color:var(--info-ink); }
+.cr-comment{
+  margin-left:32px; width:calc(100% - 32px); font:inherit; font-size:12.5px;
+  padding:6px 9px; border-radius:6px; border:1px solid var(--border-strong);
+  background:var(--surface-0); color:var(--text-primary);
+}
+.cr-comment::placeholder{ color:var(--text-secondary); }
+
+textarea.notes-box{
+  width:100%; min-height:110px; font:inherit; font-size:13px; padding:10px 12px;
+  border-radius:9px; border:1px solid var(--border-strong); background:var(--surface-1);
+  color:var(--text-primary); resize:vertical;
+}
+
+/* ---- sign-off ---- */
+.signoff-block{
+  border:1px solid var(--border-strong); border-radius:9px; padding:12px;
+  margin-bottom:10px; background:var(--surface-1);
+}
+.signoff-block .so-role{ font-weight:700; font-size:13.5px; margin-bottom:8px; }
+.so-row{ display:flex; gap:10px; flex-wrap:wrap; margin-bottom:8px; }
+.so-field{ flex:1; min-width:140px; }
+.so-field label{ display:block; font-size:11px; color:var(--text-secondary); margin-bottom:3px; }
+.so-field input{
+  width:100%; font:inherit; font-size:13px; padding:7px 9px; border-radius:6px;
+  border:1px solid var(--border-strong); background:var(--surface-0); color:var(--text-primary);
+}
+.sig-pad-wrap{ border:1px dashed var(--border-strong); border-radius:8px; background:var(--surface-0); position:relative; }
+.sig-pad-wrap canvas{ display:block; width:100%; height:120px; touch-action:none; cursor:crosshair; }
+.sig-pad-empty-hint{
+  position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  font-size:12px; color:var(--text-secondary); pointer-events:none;
+}
+.sig-actions{ display:flex; justify-content:flex-end; margin-top:6px; }
+.sig-actions button{ font-size:11.5px; padding:5px 10px; }
+
+/* ---- setup / reconnect ---- */
+.setup-card{
+  border:1px solid var(--border-strong); border-radius:10px; padding:20px;
+  background:var(--surface-1); max-width:420px; margin:40px auto 0;
+}
+
+/* ---- level plan viewer (photo + room markers only, no measurements) ----
+   Andrew, 2026-09-19: "make the viewer larger in the itp app, same as the
+   viewer app" -- Site Measure/the Viewer show their canvas edge-to-edge,
+   filling the whole screen below a slim toolbar, not boxed into a narrow
+   centered column. This screen now does the same: while it's the active
+   screen, <body> gets a "plan-fullscreen" class (set in showScreen()) that
+   drops <main>'s max-width/padding and gives the plan viewport every pixel
+   of height the viewport isn't using for the slim top bar, instead of the
+   old fixed 60vh box sitting in the middle of a padded, width-capped page. */
+body.plan-fullscreen{ height:100dvh; overflow:hidden; }
+body.plan-fullscreen main{ max-width:none; width:100%; padding:0; margin:0; display:flex; flex-direction:column; min-height:0; flex:1; }
+body.plan-fullscreen #screenLevelPlan.active{ display:flex; flex-direction:column; flex:1; min-height:0; }
+.plan-topbar{ display:flex; align-items:center; gap:10px; padding:10px 16px 0; flex:none; }
+.plan-topbar .back-link{ padding:4px 0; flex:none; }
+.plan-topbar h2{ margin:0; }
+.plan-viewport{
+  position:relative; width:100%; height:60vh; min-height:320px;
+  border:1px solid var(--border-strong); border-radius:10px; overflow:hidden;
+  background:var(--surface-2); margin:10px 0 6px; touch-action:none;
+}
+body.plan-fullscreen .plan-viewport{
+  flex:1; min-height:0; height:auto; margin:8px 0 0; border-radius:0;
+  border-left:none; border-right:none; border-bottom:none;
+}
+#levelPlanSvg{ width:100%; height:100%; display:block; cursor:grab; }
+#levelPlanSvg:active{ cursor:grabbing; }
+.plan-marker{ cursor:pointer; }
+.plan-zoom-controls{
+  position:absolute; right:10px; bottom:10px; display:flex; flex-direction:column; gap:6px;
+}
+.plan-zoom-btn{
+  width:34px; height:34px; border-radius:8px; border:1px solid var(--border-strong);
+  background:var(--surface-1); color:var(--text-primary); font-size:18px; line-height:1;
+  cursor:pointer; box-shadow:var(--shadow); display:flex; align-items:center; justify-content:center;
+  padding:0;
+}
+.plan-fit-btn{ font-size:15px; }
+.plan-rooms-btn{
+  position:absolute; left:10px; top:10px; z-index:5;
+  font:inherit; font-size:12.5px; padding:7px 12px; border-radius:999px;
+  border:1px solid var(--border-strong); background:var(--surface-1); color:var(--text-primary);
+  cursor:pointer; box-shadow:var(--shadow);
+}
+.plan-loading-note, .plan-empty-note{
+  position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  padding:24px; text-align:center; font-size:13px; color:var(--text-secondary);
+}
+
+/* ---- company logo (Projects screen) ---- */
+.logo-setting-row{
+  display:flex; align-items:center; gap:12px; padding:10px 12px; margin-bottom:12px;
+  border:1px solid var(--border-strong); border-radius:9px; background:var(--surface-1);
+}
+.logo-setting-row .logo-thumb{
+  width:44px; height:44px; border-radius:8px; border:1px solid var(--border-strong);
+  background:var(--surface-0); object-fit:contain; flex:none;
+}
+.logo-setting-row .logo-thumb.empty{ display:flex; align-items:center; justify-content:center; font-size:10px; color:var(--text-secondary); }
+.logo-setting-row .logo-setting-text{ flex:1; font-size:12.5px; color:var(--text-secondary); }
+.logo-setting-row .logo-setting-actions{ display:flex; gap:8px; flex:none; }
+
+/* ---- toast ---- */
+#toast{
+  position:fixed; left:50%; bottom:22px; transform:translateX(-50%) translateY(10px);
+  background:var(--surface-2); color:var(--text-primary); border:1px solid var(--border-strong);
+  padding:10px 16px; border-radius:8px; font-size:13px; box-shadow:var(--shadow);
+  opacity:0; pointer-events:none; transition:opacity .18s ease, transform .18s ease;
+  max-width:90vw; z-index:60;
+}
+#toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+/* ---- generic prompt modal ---- */
+.modal-backdrop{
+  position:fixed; inset:0; background:rgba(0,0,0,.4);
+  display:flex; align-items:center; justify-content:center; z-index:50;
+}
+.modal-backdrop[hidden]{ display:none; }
+.modal-box{
+  background:var(--surface-1); border:1px solid var(--border-strong); border-radius:10px;
+  box-shadow:var(--shadow); padding:18px 20px; max-width:340px; width:calc(100% - 40px);
+}
+.modal-box p{ margin:0 0 14px; font-size:13.5px; line-height:1.45; }
+.modal-box input[type="text"]{
+  display:block; width:100%; box-sizing:border-box; font:inherit; font-size:13.5px;
+  padding:8px 10px; margin-bottom:16px; border-radius:6px; border:1px solid var(--border-strong);
+  background:var(--surface-0); color:var(--text-primary);
+}
+.modal-actions{ display:flex; justify-content:flex-end; gap:8px; flex-wrap:wrap; }
+</style>
+</head>
+<body>
+
+<header>
+  <img class="brand-icon" src="./icons/icon-192.png?v=v1" alt="">
+  <div class="brand-text">UTZ<b>LINE</b> Manufacture ITP</div>
+  <div class="crumbs" id="crumbsEl"></div>
+</header>
+
+<main>
+
+  <!-- ---- Setup: no Projects folder chosen yet ---- -->
+  <div class="screen" id="screenSetup">
+    <div class="setup-card">
+      <h2>Choose your Projects folder</h2>
+      <p class="hint">Point this at the same Projects folder Site Measure and the Viewer already use. Manufacture ITP checklists are saved alongside each project's own levels, in a project-wide "itp-manufacture" folder -- separate from Install ITP's own "itp" folder.</p>
+      <button class="mbtn mbtn-accent" id="chooseRootBtn">Choose Projects Folder</button>
+    </div>
+  </div>
+
+  <!-- ---- Reconnect: a remembered folder needs permission re-granted ---- -->
+  <div class="screen" id="screenReconnect">
+    <div class="setup-card">
+      <h2>Reconnect to your Projects folder</h2>
+      <p class="hint" id="reconnectLabel"></p>
+      <button class="mbtn mbtn-accent" id="reconnectBtn">Reconnect</button>
+      <div class="actions-row"><button class="mbtn" id="reconnectChooseDifferentBtn">Choose a Different Folder</button></div>
+    </div>
+  </div>
+
+  <!-- ---- Project list ---- -->
+  <div class="screen" id="screenProjects">
+    <h2>Projects</h2>
+    <p class="hint">Choose a project to open its levels, or pick a different Projects folder.</p>
+    <div class="logo-setting-row">
+      <img class="logo-thumb" id="companyLogoThumb" style="display:none;" alt="Company logo">
+      <div class="logo-thumb empty" id="companyLogoThumbEmpty">No logo</div>
+      <div class="logo-setting-text">Company logo, printed in the top-right corner of every exported checklist PDF.</div>
+      <div class="logo-setting-actions">
+        <button class="mbtn" id="insertLogoBtn">Insert logo</button>
+        <button class="mbtn mbtn-danger" id="removeLogoBtn" style="display:none;">Remove</button>
+      </div>
+    </div>
+    <input type="file" id="companyLogoFileInput" accept="image/*" style="display:none;">
+    <!-- Shared device identity (UTZLINE Data Standard v1, §6, added v7) --
+         reads from/writes to the same "utzline-identity" IndexedDB
+         database Site Measure/Viewer's own toolbar button uses -- same
+         origin, so a name set in either app shows up in both. See the
+         identity IDB helpers further down (near IDB_NAME) for the other
+         half of this. -->
+    <div class="logo-setting-row">
+      <div class="logo-setting-text" id="deviceUserNameText">Your name: not set — attributed on ITP checklists you complete on this device.</div>
+      <div class="logo-setting-actions">
+        <button class="mbtn" id="setDeviceUserNameBtn">Set your name</button>
+      </div>
+    </div>
+    <div class="list" id="projectListEl"></div>
+    <div class="actions-row"><button class="mbtn" id="switchRootBtn">Use a Different Projects Folder</button></div>
+  </div>
+
+  <!-- ---- Level list ---- -->
+  <div class="screen" id="screenLevels">
+    <button type="button" class="back-link" id="backToProjectsBtn">← All projects</button>
+    <h2 id="levelsHeading"></h2>
+    <p class="hint">Choose a level to see its rooms.</p>
+    <div class="list" id="levelListEl"></div>
+  </div>
+
+  <!-- ---- Level plan: the level's own photo with room markers, same way the
+       Viewer shows it, but with every drawn measurement/dimension/note from
+       Site Measure left out -- only the base photo and the room markers
+       themselves are ever rendered here. ---- -->
+  <div class="screen" id="screenLevelPlan">
+    <div class="plan-topbar">
+      <button type="button" class="back-link" id="backToLevelsFromPlanBtn">← All levels</button>
+      <h2 id="levelPlanHeading"></h2>
+    </div>
+    <div class="plan-viewport" id="planViewportEl">
+      <svg id="levelPlanSvg">
+        <g id="levelPlanWorld">
+          <image id="levelPlanImage" href=""></image>
+          <g id="levelPlanTiles"></g>
+          <g id="levelPlanMarkers"></g>
+        </g>
+      </svg>
+      <button type="button" class="plan-rooms-btn" id="planViewRoomListBtn">Room list</button>
+      <div class="plan-zoom-controls">
+        <button type="button" class="plan-zoom-btn" id="planZoomInBtn" aria-label="Zoom in">+</button>
+        <button type="button" class="plan-zoom-btn" id="planZoomOutBtn" aria-label="Zoom out">&minus;</button>
+        <button type="button" class="plan-zoom-btn plan-fit-btn" id="planFitBtn" aria-label="Fit to screen" title="Fit to screen">&#10530;</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ---- Room list ---- -->
+  <div class="screen" id="screenRooms">
+    <button type="button" class="back-link" id="backToLevelsBtn">← All levels</button>
+    <h2 id="roomsHeading"></h2>
+    <p class="hint">Choose a room to see its joinery items.</p>
+    <div class="list" id="roomListEl"></div>
+  </div>
+
+  <!-- ---- Joinery items list ---- -->
+  <div class="screen" id="screenItems">
+    <button type="button" class="back-link" id="backToRoomsBtn">← All rooms</button>
+    <h2 id="itemsHeading"></h2>
+    <p class="hint">Open an existing joinery item's checklist, or start a new one.</p>
+    <div class="list" id="itemListEl"></div>
+    <div class="actions-row"><button class="mbtn mbtn-accent" id="newItemBtn">+ New Joinery Item</button></div>
+  </div>
+
+  <!-- ---- Checklist screen ---- -->
+  <div class="screen" id="screenChecklist">
+    <button type="button" class="back-link" id="backToItemsBtn">← All joinery items in this room</button>
+
+    <div class="title-block">
+      <div class="tb-head">PRE DELIVERY — CHECKLIST</div>
+      <div class="tb-grid">
+        <div class="tb-field"><div class="tb-label">Project No.</div><div class="tb-value" id="tbProjectNo"></div></div>
+        <div class="tb-field"><div class="tb-label">Project</div><div class="tb-value" id="tbProjectName"></div></div>
+        <div class="tb-field"><div class="tb-label">Head Contractor / Builder</div><div class="tb-value" id="tbContractor"></div></div>
+        <div class="tb-field"><div class="tb-label">Level</div><div class="tb-value" id="tbLevel"></div></div>
+        <div class="tb-field"><div class="tb-label">Area / Room</div><div class="tb-value" id="tbRoom"></div></div>
+        <div class="tb-field"><div class="tb-label">Joinery No.</div><div class="tb-value" id="tbJoinery"></div></div>
+      </div>
+    </div>
+
+    <h2 style="font-size:14px; text-transform:uppercase; letter-spacing:.04em; color:var(--text-secondary);">Pre Delivery Quality Checks</h2>
+    <div id="checkRowsEl"></div>
+
+    <h2 style="font-size:14px; text-transform:uppercase; letter-spacing:.04em; color:var(--text-secondary); margin-top:18px;">Notes / Comments / Missing Parts</h2>
+    <textarea class="notes-box" id="notesEl" placeholder="Anything not covered above — missing parts, follow-up needed, etc."></textarea>
+
+    <h2 style="font-size:14px; text-transform:uppercase; letter-spacing:.04em; color:var(--text-secondary); margin-top:18px;">Sign-off / Approval</h2>
+    <div class="signoff-block" data-role="builder">
+      <div class="so-role">Joinery Builder</div>
+      <div class="so-row">
+        <div class="so-field"><label>Name</label><input type="text" class="so-name" autocomplete="off"></div>
+        <div class="so-field"><label>Date</label><input type="date" class="so-date"></div>
+      </div>
+      <div class="sig-pad-wrap"><canvas class="sig-canvas"></canvas><div class="sig-pad-empty-hint">Sign here</div></div>
+      <div class="sig-actions"><button class="mbtn sig-clear-btn">Clear signature</button></div>
+    </div>
+    <div class="signoff-block" data-role="supervisor">
+      <div class="so-role">Metro Factory / Workshop Supervisor</div>
+      <div class="so-row">
+        <div class="so-field"><label>Name</label><input type="text" class="so-name" autocomplete="off"></div>
+        <div class="so-field"><label>Date</label><input type="date" class="so-date"></div>
+      </div>
+      <div class="sig-pad-wrap"><canvas class="sig-canvas"></canvas><div class="sig-pad-empty-hint">Sign here</div></div>
+      <div class="sig-actions"><button class="mbtn sig-clear-btn">Clear signature</button></div>
+    </div>
+
+    <div class="actions-row">
+      <button class="mbtn mbtn-accent" id="saveChecklistBtn">Save</button>
+      <button class="mbtn" id="exportPdfBtn">Export PDF</button>
+      <button class="mbtn mbtn-danger" id="deleteItemBtn">Delete this item</button>
+    </div>
+  </div>
+
+</main>
+
+<div id="toast"></div>
+
+<div class="modal-backdrop" id="promptBackdrop" hidden>
+  <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="promptLabel">
+    <p id="promptLabel"></p>
+    <input type="text" id="promptInput" maxlength="60" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <div class="modal-actions">
+      <button class="mbtn" id="promptCancel">Cancel</button>
+      <button class="mbtn mbtn-accent" id="promptOk">OK</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="confirmBackdrop" hidden>
+  <div class="modal-box" role="alertdialog" aria-modal="true" aria-labelledby="confirmMsg">
+    <p id="confirmMsg"></p>
+    <div class="modal-actions">
+      <button class="mbtn" id="confirmCancel">Cancel</button>
+      <button class="mbtn mbtn-danger" id="confirmOk">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- Same three-way "leave with unsaved changes?" dialog as Site Measure/Viewer
+     (Save & leave / Leave without saving / Cancel) -- shown whenever the
+     checklist screen is left (Back, the items breadcrumb, or navigating
+     further up) with a real unsaved edit still pending. -->
+<div class="modal-backdrop" id="leaveConfirmBackdrop" hidden>
+  <div class="modal-box" role="alertdialog" aria-modal="true" aria-labelledby="leaveConfirmMsg">
+    <p id="leaveConfirmMsg">Save changes to this checklist before leaving?</p>
+    <div class="modal-actions">
+      <button class="mbtn" id="leaveConfirmCancel">Cancel</button>
+      <button class="mbtn mbtn-danger" id="leaveConfirmDiscard">Leave without saving</button>
+      <button class="mbtn mbtn-accent" id="leaveConfirmSave">Save &amp; leave</button>
+    </div>
+  </div>
+</div>
+
+<script src="./jspdf.umd.min.js" onerror="window.__pdfLibFailed = true;"></script>
+<script>
+(function(){
+  "use strict";
+
+  /* ============================== the 17-item checklist ============================== */
+  // Verbatim from Metro Joinery's own "PRE DELIVERY – CHECKLIST"
+  // template (supplied 2026-09-18), same order as printed.
+  // UTZLINE ITP's own small brand mark, embedded inline so every exported
+  // PDF carries it without depending on the icons/ folder being reachable
+  // from wherever jsPDF happens to run -- same self-contained-export
+  // precedent as source.html's own embedded fonts/logo.
+  // Bumped from a 96x96 source to 256x256 (2026-09-19, Andrew: "both
+  // company and utzline logos on the exports are low resolution
+  // unreadable") -- v36/ITP v4 doubled this mark's PDF footprint (24px -->
+  // 48pt) without a matching resolution bump in the source image, so it
+  // was being upscaled and looked pixelated. Re-exported from the same
+  // icon-512.png artwork this app's own icon set already uses, just
+  // resized down to 256px rather than reusing the original 96px crop --
+  // plenty of headroom over the 48pt box this actually gets drawn into,
+  // even at a heavy pinch-zoom on a phone.
+  var UTZLINE_ITP_LOGO_DATA_URL = "data:image/png;base64,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";
+
+  var CHECK_ITEMS = [
+    "No missing parts – all components checked against and ticked off on shop drawings - list in notes below",
+    "Unit dimensions verified against shop drawings prior to packing",
+    "Hinges - Checked if 110 or 165 degree. Soft close or Non soft close. Restrictors fitted where a clash is imminent",
+    "Handles fitted",
+    "Drawer/door alignment checked and reveals consistent throughout the unit",
+    "Cutlery trays installed - 1 per kitchen unless otherwise documented",
+    "Joints (mitres, butt joins, biscuit/dowel) tight, flush and correctly aligned. All joins biscuited where possible.",
+    "Anti-ligature/security hardware fitted correctly where specified - Mental Health",
+    "All exposed edges sealed for infection control compliance (no exposed substrate)",
+    "Surface finish free of scratches, chips, delamination or colour variation",
+    "Kickers checked against drawings, with fascias screwed to ladder frames or supplied loose (state which).",
+    "Bulkheads checked against drawings. Fascias screwed to frames and joins biscuited.",
+    "Benchtops checked against drawings and joins biscuited",
+    "Fillers / Shadows supplied. Screwed to joinery where possible",
+    "Protective wrapping applied to prevent transport damage where applicable",
+    "All items clearly labelled with joinery number, location and project reference",
+    "Pre delivery checklist completed and signed prior to dispatch"
+  ];
+
+  /* ============================== small generic helpers ============================== */
+  function sanitizeFileBase(name){
+    var cleaned = String(name || "")
+      .replace(/[<>:"/\\|?*\x00-\x1f]/g, "")
+      .trim()
+      .replace(/^[._]+|[._\s]+$/g, "");
+    return cleaned.slice(0, 80) || "item";
+  }
+  // Same rules as source.html's own sanitizeUserName -- a person's name,
+  // not a filename fragment, but still stripped of filesystem-hostile
+  // characters up front since UTZLINE Data Standard v1 §5 eventually
+  // embeds this name directly into every saved overlay's filename.
+  function sanitizeUserName(name){
+    var cleaned = String(name || "")
+      .replace(/[<>:"/\\|?*\x00-\x1f]/g, "")
+      .trim()
+      .replace(/\s+/g, " ");
+    return cleaned.slice(0, 60);
+  }
+  function todayISO(){
+    var d = new Date();
+    var m = String(d.getMonth() + 1).padStart(2, "0");
+    var day = String(d.getDate()).padStart(2, "0");
+    return d.getFullYear() + "-" + m + "-" + day;
+  }
+  function timestampForFilename(){
+    var d = new Date();
+    function p(n){ return String(n).padStart(2, "0"); }
+    return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + "_" +
+      p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
+  }
+  var toastEl = document.getElementById("toast");
+  var toastTimer = null;
+  function showToast(msg){
+    toastEl.textContent = msg;
+    toastEl.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ toastEl.classList.remove("show"); }, 3200);
+  }
+
+  // Every subdirectory of a directory handle, sorted case-insensitively --
+  // same shape as source.html's own listSubdirNames, since it browses the
+  // exact same kind of folder structure.
+  function listSubdirNames(dirHandle){
+    if (!dirHandle || typeof dirHandle.values !== "function") return Promise.resolve([]);
+    var names = [];
+    var iter = dirHandle.values();
+    function step(){
+      return iter.next().then(function(res){
+        if (res.done) return names;
+        if (res.value && res.value.kind === "directory") names.push(res.value.name);
+        return step();
+      });
+    }
+    return step().then(function(list){
+      list.sort(function(a, b){ return a.localeCompare(b, undefined, { sensitivity: "base" }); });
+      return list;
+    });
+  }
+  // Every *.json file directly in a directory handle -- used for a room's
+  // own itp folder, where each file is one joinery item's checklist state.
+  function listJsonFileNames(dirHandle){
+    if (!dirHandle || typeof dirHandle.values !== "function") return Promise.resolve([]);
+    var names = [];
+    var iter = dirHandle.values();
+    function step(){
+      return iter.next().then(function(res){
+        if (res.done) return names;
+        if (res.value && res.value.kind === "file" && /\.json$/i.test(res.value.name)) names.push(res.value.name);
+        return step();
+      });
+    }
+    return step().then(function(list){
+      list.sort(function(a, b){ return a.localeCompare(b, undefined, { sensitivity: "base", numeric: true }); });
+      return list;
+    });
+  }
+
+  /* ============================== tiny IndexedDB kv store ============================== */
+  // Own database/store, separate from Site Measure/Viewer's own -- this app
+  // only ever needs to remember one thing (the Projects root folder handle).
+  var IDB_NAME = "utzline-itp-kv";
+  var IDB_STORE = "kv";
+  function idbOpen(){
+    return new Promise(function(resolve, reject){
+      var req = indexedDB.open(IDB_NAME, 1);
+      req.onupgradeneeded = function(){ req.result.createObjectStore(IDB_STORE); };
+      req.onsuccess = function(){ resolve(req.result); };
+      req.onerror = function(){ reject(req.error); };
+    });
+  }
+  function idbGet(key){
+    return idbOpen().then(function(db){
+      return new Promise(function(resolve, reject){
+        var tx = db.transaction(IDB_STORE, "readonly");
+        var req = tx.objectStore(IDB_STORE).get(key);
+        req.onsuccess = function(){ resolve(req.result); };
+        req.onerror = function(){ reject(req.error); };
+      });
+    });
+  }
+  function idbSet(key, value){
+    return idbOpen().then(function(db){
+      return new Promise(function(resolve, reject){
+        var tx = db.transaction(IDB_STORE, "readwrite");
+        tx.objectStore(IDB_STORE).put(value, key);
+        tx.oncomplete = function(){ resolve(); };
+        tx.onerror = function(){ reject(tx.error); };
+      });
+    });
+  }
+  var PROJECTS_ROOT_KEY = "projectsRootHandle";
+  var COMPANY_LOGO_KEY = "companyLogoDataUrl";
+
+  /* ---- shared device identity (UTZLINE Data Standard v1, §6, added v7) ----
+     A SEPARATE tiny IndexedDB database from IDB_NAME above -- deliberately
+     using the exact same database name/store/key Site Measure/Viewer's own
+     copy of this block uses (see source.html), so a name set in either app
+     shows up in both: IndexedDB is scoped per-ORIGIN, not per-page, and
+     every UTZLINE app lives on the one GitHub Pages origin. This app never
+     needs to know redline-db's schema (Site Measure's own autosave store)
+     or vice versa -- just this one small shared pair. */
+  var IDENTITY_DB_NAME = "utzline-identity", IDENTITY_STORE = "kv", IDENTITY_KEY = "deviceUserName";
+  var deviceUserName = "";
+  function identityDbOpen(){
+    return new Promise(function(resolve, reject){
+      var req = indexedDB.open(IDENTITY_DB_NAME, 1);
+      req.onupgradeneeded = function(){ req.result.createObjectStore(IDENTITY_STORE); };
+      req.onsuccess = function(){ resolve(req.result); };
+      req.onerror = function(){ reject(req.error); };
+    });
+  }
+  function getDeviceUserName(){
+    return identityDbOpen().then(function(db){
+      return new Promise(function(resolve, reject){
+        var tx = db.transaction(IDENTITY_STORE, "readonly");
+        var req = tx.objectStore(IDENTITY_STORE).get(IDENTITY_KEY);
+        req.onsuccess = function(){ resolve(req.result || ""); };
+        req.onerror = function(){ reject(req.error); };
+      });
+    });
+  }
+  function setDeviceUserName(name){
+    name = String(name || "").trim();
+    return identityDbOpen().then(function(db){
+      return new Promise(function(resolve, reject){
+        var tx = db.transaction(IDENTITY_STORE, "readwrite");
+        tx.objectStore(IDENTITY_STORE).put(name, IDENTITY_KEY);
+        tx.oncomplete = function(){ resolve(name); };
+        tx.onerror = function(){ reject(tx.error); };
+      });
+    });
+  }
+  function updateDeviceUserNameText(){
+    var el = document.getElementById("deviceUserNameText");
+    if (!el) return;
+    el.textContent = deviceUserName
+      ? "Your name: " + deviceUserName + " — attributed on ITP checklists you complete on this device."
+      : "Your name: not set — attributed on ITP checklists you complete on this device.";
+  }
+  function loadDeviceUserName(){
+    return getDeviceUserName().then(function(name){
+      deviceUserName = name || "";
+      updateDeviceUserNameText();
+    }).catch(function(){
+      deviceUserName = "";
+      updateDeviceUserNameText();
+    });
+  }
+
+  /* ============================== screen switching ============================== */
+  var screens = {};
+  ["Setup","Reconnect","Projects","Levels","LevelPlan","Rooms","Items","Checklist"].forEach(function(n){
+    screens[n] = document.getElementById("screen" + n);
+  });
+  function showScreen(name){
+    Object.keys(screens).forEach(function(n){ screens[n].classList.toggle("active", n === name); });
+    // Level Plan goes full-viewport, edge-to-edge, same as Site Measure/the
+    // Viewer's own canvas -- see the "plan-fullscreen" CSS block for why.
+    // Toggled synchronously, before renderLevelPlanScreen's own queued
+    // requestAnimationFrame(fitPlanView) fires, so that fit always measures
+    // the final full-screen layout, not the boxed-in one.
+    document.body.classList.toggle("plan-fullscreen", name === "LevelPlan");
+    window.scrollTo(0, 0);
+  }
+  var crumbsEl = document.getElementById("crumbsEl");
+  function updateCrumbs(){
+    var parts = [];
+    if (state.projectName) parts.push(state.projectName);
+    if (state.levelName) parts.push(state.levelName);
+    if (state.roomName) parts.push(state.roomName);
+    if (state.currentJoineryNo) parts.push(state.currentJoineryNo);
+    crumbsEl.textContent = parts.join(" / ");
+  }
+
+  /* ============================== app state ============================== */
+  var state = {
+    rootHandle: null,
+    rootName: "",
+    projectHandle: null,
+    projectName: "",
+    projectMeta: null,       // {no,name,contractor} from project-meta.json, or null
+    levelHandle: null,
+    levelName: "",
+    roomHandle: null,
+    roomName: "",
+    itpRoomHandle: null,     // <root>/<project>/itp/<level>/<room>
+    currentFileHandle: null, // this item's own .json file handle
+    currentJoineryNo: "",
+    currentData: null,       // the loaded/blank checklist object
+    companyLogoDataUrl: null, // printed top-right on every exported PDF, if set
+    companyLogoW: 0, companyLogoH: 0 // natural pixel size, for aspect-correct PDF placement
+  };
+
+  /* ============================== company logo (Projects screen) ============================== */
+  // A single device-wide setting (not per-project) -- once inserted, every
+  // exported checklist PDF from here on carries it in the top-right
+  // corner, alongside UTZLINE ITP's own logo in the bottom-right (see
+  // exportChecklistPdf). Stored as a data URL in the same IndexedDB store
+  // as the remembered Projects-root handle; downscaled through a canvas
+  // first so an arbitrary phone photo of a logo doesn't balloon every PDF.
+  var companyLogoThumb = document.getElementById("companyLogoThumb");
+  var companyLogoThumbEmpty = document.getElementById("companyLogoThumbEmpty");
+  var insertLogoBtn = document.getElementById("insertLogoBtn");
+  var removeLogoBtn = document.getElementById("removeLogoBtn");
+  var companyLogoFileInput = document.getElementById("companyLogoFileInput");
+
+  function refreshCompanyLogoUI(){
+    if (state.companyLogoDataUrl){
+      companyLogoThumb.src = state.companyLogoDataUrl;
+      companyLogoThumb.style.display = "";
+      companyLogoThumbEmpty.style.display = "none";
+      removeLogoBtn.style.display = "";
+      insertLogoBtn.textContent = "Change logo";
+    } else {
+      companyLogoThumb.style.display = "none";
+      companyLogoThumbEmpty.style.display = "flex";
+      removeLogoBtn.style.display = "none";
+      insertLogoBtn.textContent = "Insert logo";
+    }
+  }
+  // Stored as {url, w, h} rather than a bare data URL -- w/h are the
+  // logo's own natural pixel size (after downscaling), needed to place it
+  // aspect-correct in the PDF export without re-decoding the image there.
+  function loadCompanyLogo(){
+    return idbGet(COMPANY_LOGO_KEY).then(function(stored){
+      state.companyLogoDataUrl = (stored && stored.url) || null;
+      state.companyLogoW = (stored && stored.w) || 0;
+      state.companyLogoH = (stored && stored.h) || 0;
+      refreshCompanyLogoUI();
+    }).catch(function(){ /* no stored logo yet -- fine */ });
+  }
+  function downscaleImageFile(file, maxDim){
+    return new Promise(function(resolve, reject){
+      var img = new Image();
+      img.onload = function(){
+        var scale = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
+        var w = Math.max(1, Math.round(img.naturalWidth * scale));
+        var h = Math.max(1, Math.round(img.naturalHeight * scale));
+        var canvas = document.createElement("canvas");
+        canvas.width = w; canvas.height = h;
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+        resolve({ url: canvas.toDataURL("image/png"), w: w, h: h });
+        URL.revokeObjectURL(img.src);
+      };
+      img.onerror = function(){ reject(new Error("Couldn't read that image.")); URL.revokeObjectURL(img.src); };
+      img.src = URL.createObjectURL(file);
+    });
+  }
+  insertLogoBtn.addEventListener("click", function(){ companyLogoFileInput.click(); });
+  companyLogoFileInput.addEventListener("change", function(){
+    var file = companyLogoFileInput.files && companyLogoFileInput.files[0];
+    companyLogoFileInput.value = "";
+    if (!file) return;
+    downscaleImageFile(file, 500).then(function(result){
+      return idbSet(COMPANY_LOGO_KEY, result).then(function(){
+        state.companyLogoDataUrl = result.url;
+        state.companyLogoW = result.w;
+        state.companyLogoH = result.h;
+        refreshCompanyLogoUI();
+        showToast("Company logo saved.");
+      });
+    }).catch(function(err){
+      console.error("Insert logo failed:", err);
+      showToast("Couldn't use that image — try a different file.");
+    });
+  });
+  removeLogoBtn.addEventListener("click", function(){
+    idbSet(COMPANY_LOGO_KEY, null).then(function(){
+      state.companyLogoDataUrl = null;
+      state.companyLogoW = 0;
+      state.companyLogoH = 0;
+      refreshCompanyLogoUI();
+      showToast("Company logo removed.");
+    }).catch(function(err){ console.error("Remove logo failed:", err); });
+  });
+
+  /* ---- shared device identity button (added v7) ----
+     Reuses the app's own generic text-prompt modal (genericPrompt, defined
+     further down alongside promptBackdrop) rather than a dedicated dialog,
+     since this is just a single-field "type a name and confirm" prompt --
+     exactly what that modal already does. */
+  var setDeviceUserNameBtn = document.getElementById("setDeviceUserNameBtn");
+  if (setDeviceUserNameBtn){
+    setDeviceUserNameBtn.addEventListener("click", function(){
+      genericPrompt("Your name — attributed on ITP checklists you complete on this device:", deviceUserName).then(function(value){
+        if (value === null) return; // cancelled
+        var clean = sanitizeUserName(value);
+        setDeviceUserName(clean).then(function(saved){
+          deviceUserName = saved;
+          updateDeviceUserNameText();
+          showToast(saved ? "Checklists on this device will be attributed to “" + saved + "”." : "Cleared — checklists on this device will show no name.");
+        }).catch(function(){
+          showToast("Couldn't save your name on this device.");
+        });
+      });
+    });
+  }
+
+  /* ============================== project-meta.json (read-only here) ============================== */
+  function readProjectMeta(dirHandle){
+    if (!dirHandle) return Promise.resolve(null);
+    return dirHandle.getFileHandle("project-meta.json").then(function(fh){
+      return fh.getFile();
+    }).then(function(file){
+      return file.text();
+    }).then(function(text){
+      try{
+        var parsed = JSON.parse(text);
+        return { no: String(parsed.no || ""), name: String(parsed.name || ""), contractor: String(parsed.contractor || "") };
+      }catch(e){ return null; }
+    }, function(){ return null; });
+  }
+
+  /* ============================== folder picking / reconnect ============================== */
+  var reconnectLabel = document.getElementById("reconnectLabel");
+  function afterRootReady(){
+    return populateProjectList().then(function(){ showScreen("Projects"); });
+  }
+  function tryRestoreRoot(){
+    return idbGet(PROJECTS_ROOT_KEY).then(function(handle){
+      if (!handle) { showScreen("Setup"); return; }
+      return handle.queryPermission({ mode: "readwrite" }).then(function(perm){
+        state.rootHandle = handle;
+        state.rootName = handle.name || "";
+        if (perm === "granted"){
+          return afterRootReady();
+        }
+        reconnectLabel.textContent = "Projects folder “" + state.rootName + "” needs permission re-granted (this happens after closing and reopening the browser).";
+        showScreen("Reconnect");
+      });
+    }).catch(function(){ showScreen("Setup"); });
+  }
+  function pickRootFolder(){
+    return window.showDirectoryPicker({ id: "utzline-itp-projects-root", mode: "readwrite" }).then(function(handle){
+      state.rootHandle = handle;
+      state.rootName = handle.name || "";
+      return idbSet(PROJECTS_ROOT_KEY, handle).then(function(){ return afterRootReady(); });
+    });
+  }
+  document.getElementById("chooseRootBtn").addEventListener("click", function(){
+    pickRootFolder().catch(function(err){
+      if (err && err.name === "AbortError") return;
+      console.error("Choose Projects folder failed:", err);
+      showToast("Couldn't open that folder — try again.");
+    });
+  });
+  document.getElementById("switchRootBtn").addEventListener("click", function(){
+    pickRootFolder().catch(function(err){
+      if (err && err.name === "AbortError") return;
+      console.error("Choose Projects folder failed:", err);
+      showToast("Couldn't open that folder — try again.");
+    });
+  });
+  document.getElementById("reconnectBtn").addEventListener("click", function(){
+    if (!state.rootHandle) return;
+    state.rootHandle.requestPermission({ mode: "readwrite" }).then(function(perm){
+      if (perm !== "granted") return;
+      return afterRootReady();
+    }).catch(function(err){ console.error("Reconnect failed:", err); });
+  });
+  document.getElementById("reconnectChooseDifferentBtn").addEventListener("click", function(){
+    pickRootFolder().catch(function(err){
+      if (err && err.name === "AbortError") return;
+      console.error("Choose Projects folder failed:", err);
+    });
+  });
+
+  /* ============================== project list ============================== */
+  var projectListEl = document.getElementById("projectListEl");
+  function populateProjectList(){
+    return listSubdirNames(state.rootHandle).then(function(names){
+      projectListEl.innerHTML = "";
+      if (!names.length){
+        projectListEl.innerHTML = '<div class="empty-note">No projects found in this folder yet — create one in Site Measure first.</div>';
+        return;
+      }
+      // Kick off a readProjectMeta for every project so the list can show
+      // "No. — Name" where available without blocking the list appearing;
+      // each row updates itself once its own meta read resolves.
+      names.forEach(function(name){
+        var row = document.createElement("button");
+        row.type = "button";
+        row.className = "list-row";
+        row.innerHTML = '<div class="row-main"><div class="row-title"></div><div class="row-sub"></div></div>';
+        row.querySelector(".row-title").textContent = name;
+        row.addEventListener("click", function(){ openProject(name); });
+        projectListEl.appendChild(row);
+        state.rootHandle.getDirectoryHandle(name).then(readProjectMeta).then(function(meta){
+          if (meta && (meta.no || meta.name || meta.contractor)){
+            var bits = [];
+            if (meta.no) bits.push("No. " + meta.no);
+            if (meta.contractor) bits.push(meta.contractor);
+            row.querySelector(".row-sub").textContent = bits.join(" · ");
+          }
+        });
+      });
+    });
+  }
+  function openProject(name){
+    state.projectName = name;
+    state.levelName = ""; state.roomName = ""; state.currentJoineryNo = "";
+    updateCrumbs();
+    return state.rootHandle.getDirectoryHandle(name).then(function(dirH){
+      state.projectHandle = dirH;
+      return readProjectMeta(dirH);
+    }).then(function(meta){
+      state.projectMeta = meta;
+      document.getElementById("levelsHeading").textContent = "“" + name + "” — levels";
+      return populateLevelList();
+    }).then(function(){ showScreen("Levels"); }).catch(function(err){
+      console.error("Open project failed:", err);
+      showToast("Couldn't open that project — try again.");
+    });
+  }
+  document.getElementById("backToProjectsBtn").addEventListener("click", function(){
+    populateProjectList().then(function(){ showScreen("Projects"); });
+  });
+
+  /* ============================== level list ============================== */
+  var levelListEl = document.getElementById("levelListEl");
+  function populateLevelList(){
+    return listSubdirNames(state.projectHandle).then(function(names){
+      // "itp-manufacture" is this app's own reserved project-wide folder,
+      // and "itp" is the sibling Install ITP app's -- neither should ever
+      // show up as if it were a level (same exclusion Site Measure's own
+      // listExistingLevels applies).
+      names = names.filter(function(n){ return n !== "itp" && n !== "itp-manufacture"; });
+      levelListEl.innerHTML = "";
+      if (!names.length){
+        levelListEl.innerHTML = '<div class="empty-note">No levels in this project yet — add one in Site Measure first.</div>';
+        return;
+      }
+      names.forEach(function(name){
+        var row = document.createElement("button");
+        row.type = "button";
+        row.className = "list-row";
+        row.innerHTML = '<div class="row-main"><div class="row-title"></div></div>';
+        row.querySelector(".row-title").textContent = name;
+        row.addEventListener("click", function(){ openLevel(name); });
+        levelListEl.appendChild(row);
+      });
+    });
+  }
+  function openLevel(name){
+    state.levelName = name;
+    state.roomName = ""; state.currentJoineryNo = "";
+    updateCrumbs();
+    return state.projectHandle.getDirectoryHandle(name).then(function(dirH){
+      state.levelHandle = dirH;
+      document.getElementById("roomsHeading").textContent = "“" + name + "” — rooms";
+      document.getElementById("levelPlanHeading").textContent = "“" + name + "”";
+      return loadLevelPlan(dirH, name);
+    }).then(function(plan){
+      if (plan){
+        currentLevelPlan = plan;
+        return renderLevelPlanScreen(plan).then(function(){ showScreen("LevelPlan"); });
+      }
+      currentLevelPlan = null;
+      return populateRoomList().then(function(){ showScreen("Rooms"); });
+    }).catch(function(err){
+      console.error("Open level failed:", err);
+      showToast("Couldn't open that level — try again.");
+    });
+  }
+  document.getElementById("backToLevelsBtn").addEventListener("click", function(){
+    populateLevelList().then(function(){ showScreen("Levels"); });
+  });
+  document.getElementById("backToLevelsFromPlanBtn").addEventListener("click", function(){
+    populateLevelList().then(function(){ showScreen("Levels"); });
+  });
+  document.getElementById("planViewRoomListBtn").addEventListener("click", function(){
+    populateRoomList().then(function(){ showScreen("Rooms"); });
+  });
+
+  /* ============================== level plan viewer ==============================
+     Shows the level's own plan photo exactly the way the Viewer does --
+     pannable/zoomable, markers included -- but with every drawn
+     measurement/dimension/text/callout from Site Measure deliberately left
+     out. The only two things ever read out of the level's own save file
+     are the base photo (imageDataURL/imageW/imageH) and the "roomlink"
+     marker objects; every other object type in the file is ignored.
+
+     Andrew, 2026-09-18: each marker is now one JOINERY ITEM (a room can
+     hold several dots, one per item), not one marker per room -- so a tap
+     jumps straight to that item's own checklist (creating a blank one if
+     it hasn't been started yet) instead of the room's item list. The
+     marker doubles as that item's own completion indicator: green check
+     once it has both sign-off signatures, red cross otherwise (including
+     one not started yet). An older marker saved before joinery codes
+     existed (joineryCode empty) falls back to the previous room-wide
+     behavior -- tapping it opens that room's item list, and its status
+     reflects the whole room. */
+  var currentLevelPlan = null; // {imageW, imageH, imageDataURL, roomlinks:[{x,y,r,roomName,label:{...}}]}
+  var planView = { scale: 1, tx: 0, ty: 0 };
+  var planPointers = new Map(); // pointerId -> {x,y}
+  var planDragStart = null;     // {x,y,tx,ty,moved,markerEl}
+  var planPinchStart = null;    // {dist,mid,view:{scale,tx,ty}}
+  var levelPlanSvg = document.getElementById("levelPlanSvg");
+  var levelPlanWorldG = document.getElementById("levelPlanWorld");
+  var levelPlanImageEl = document.getElementById("levelPlanImage");
+  var levelPlanTilesG = document.getElementById("levelPlanTiles");
+  var levelPlanMarkersG = document.getElementById("levelPlanMarkers");
+  var planViewportEl = document.getElementById("planViewportEl");
+
+  function levelSaveFilename(name){ return sanitizeFileBase(name) + ".utzline.json"; }
+
+  // Reads the level's own saves/<level>.utzline.json (written by Site
+  // Measure), same file format the Viewer reads from -- resolves null
+  // (rather than rejecting) whenever there's nothing sensible to show: no
+  // save file yet, or a corrupt/unreadable one. A null result just means
+  // "fall back to the plain room list" -- never an error.
+  //
+  // BUG FIX (2026-09-18, reported by Andrew: "the itp is not loading any
+  // plans, only the room selector" -- happening on EVERY level, not just an
+  // edge case): a large plan (e.g. a big CAD-exported hospital fitout scan)
+  // gets saved by Site Measure as a set of stitched image tiles
+  // (state.imageTiles, one <image> per tile positioned within the shared
+  // imageW x imageH space) instead of one single imageDataURL string --
+  // Site Measure and the Viewer have always rendered both shapes, but this
+  // loader only ever recognised imageDataURL and returned null (silently
+  // falling back to the room list) for every tiled plan, which is Andrew's
+  // normal case for real architectural plans, not a rare one. Now accepts
+  // either shape.
+  function loadLevelPlan(levelHandle, levelName){
+    return levelHandle.getDirectoryHandle("saves").then(function(savesH){
+      return savesH.getFileHandle(levelSaveFilename(levelName));
+    }).then(function(fh){
+      return fh.getFile();
+    }).then(function(file){
+      return file.text();
+    }).then(function(text){
+      var save = null;
+      try{ save = JSON.parse(text); }catch(e){ save = null; }
+      if (!save || !(save.imageW > 0) || !(save.imageH > 0)) return null;
+      var hasSingleImage = typeof save.imageDataURL === "string" && !!save.imageDataURL;
+      var hasTiles = Array.isArray(save.imageTiles) && save.imageTiles.length > 0;
+      if (!hasSingleImage && !hasTiles) return null;
+      var roomlinks = Array.isArray(save.objects) ? save.objects.filter(function(o){
+        return o && o.type === "roomlink" && !o.hidden && typeof o.roomName === "string" && o.roomName;
+      }) : [];
+      return {
+        imageDataURL: hasTiles ? null : save.imageDataURL,
+        imageTiles: hasTiles ? save.imageTiles : null,
+        imageW: save.imageW, imageH: save.imageH, roomlinks: roomlinks
+      };
+    }).catch(function(){ return null; });
+  }
+
+  function clampPlanScale(s){ return Math.min(20, Math.max(0.02, s)); }
+  function applyPlanView(){
+    levelPlanWorldG.setAttribute("transform", "translate(" + planView.tx + "," + planView.ty + ") scale(" + planView.scale + ")");
+  }
+  function fitPlanView(){
+    if (!currentLevelPlan) return;
+    var rect = planViewportEl.getBoundingClientRect();
+    var vw = rect.width || 300, vh = rect.height || 300;
+    var scale = clampPlanScale(Math.min(vw / currentLevelPlan.imageW, vh / currentLevelPlan.imageH) * 0.94);
+    planView.scale = scale;
+    planView.tx = (vw - currentLevelPlan.imageW * scale) / 2;
+    planView.ty = (vh - currentLevelPlan.imageH * scale) / 2;
+    applyPlanView();
+  }
+
+  // Status for a single joinery item's own marker -- complete only once
+  // THAT item's own checklist file has both sign-off signatures; not
+  // started yet (no file) or partially filled in both read as incomplete.
+  // Never creates the itp/<level>/<room> folder or the item file as a side
+  // effect of just looking -- a plan being previewed shouldn't leave empty
+  // folders/files behind for items nobody has opened yet.
+  function computeItemItpStatus(roomName, joineryCode){
+    if (!joineryCode) return computeRoomItpStatus(roomName); // legacy marker, pre-dates joinery codes
+    var fileName = sanitizeFileBase(joineryCode) + ".json";
+    return state.projectHandle.getDirectoryHandle("itp-manufacture").then(function(itpH){
+      return itpH.getDirectoryHandle(state.levelName);
+    }).then(function(levelH){
+      return levelH.getDirectoryHandle(roomName);
+    }).then(function(roomH){
+      return roomH.getFileHandle(fileName);
+    }).then(function(fh){ return fh.getFile(); })
+      .then(function(file){ return file.text(); })
+      .then(function(text){
+        var data = null;
+        try{ data = JSON.parse(text); }catch(e){ data = null; }
+        var complete = !!(data && data.signoff &&
+          data.signoff.builder && data.signoff.builder.sig &&
+          data.signoff.supervisor && data.signoff.supervisor.sig);
+        return { complete: complete, total: 1 };
+      }).catch(function(){ return { complete: false, total: 0 }; }); // not started yet
+  }
+
+  // Older behavior, kept for a legacy marker with no joinery code (see
+  // computeItemItpStatus above): checks every joinery item already started
+  // in a room and reports whether the room as a whole reads "complete" --
+  // every item present has BOTH sign-off signatures. A room with no items
+  // started yet, or with any item still missing a signature, reads
+  // incomplete. Never creates the itp/<level>/<room> folder as a side
+  // effect of just looking (unlike ensureItpRoomFolder, used when actually
+  // opening a room) -- a plan being previewed shouldn't leave empty
+  // folders behind for rooms nobody has opened yet.
+  function computeRoomItpStatus(roomName){
+    return state.projectHandle.getDirectoryHandle("itp-manufacture").then(function(itpH){
+      return itpH.getDirectoryHandle(state.levelName);
+    }).then(function(levelH){
+      return levelH.getDirectoryHandle(roomName);
+    }).then(function(roomH){
+      return listJsonFileNames(roomH).then(function(fileNames){
+        if (!fileNames.length) return { complete: false, total: 0 };
+        return fileNames.reduce(function(chain, fileName){
+          return chain.then(function(acc){
+            return roomH.getFileHandle(fileName).then(function(fh){ return fh.getFile(); })
+              .then(function(file){ return file.text(); })
+              .then(function(text){
+                var data = null;
+                try{ data = JSON.parse(text); }catch(e){ data = null; }
+                var itemComplete = !!(data && data.signoff &&
+                  data.signoff.builder && data.signoff.builder.sig &&
+                  data.signoff.supervisor && data.signoff.supervisor.sig);
+                acc.total++;
+                if (!itemComplete) acc.anyIncomplete = true;
+                return acc;
+              }).catch(function(){ acc.total++; acc.anyIncomplete = true; return acc; });
+          });
+        }, Promise.resolve({ total: 0, anyIncomplete: false })).then(function(acc){
+          return { complete: acc.total > 0 && !acc.anyIncomplete, total: acc.total };
+        });
+      });
+    }).catch(function(){ return { complete: false, total: 0 }; }); // no itp data for this room yet
+  }
+
+  var PLAN_MARKER_COMPLETE_COLOR = "#1f8a4c";
+  var PLAN_MARKER_INCOMPLETE_COLOR = "#c8391c";
+  var PLAN_MARKER_PENDING_COLOR = "#8b9490";
+
+  function buildPlanMarkerEl(obj){
+    var ns = "http://www.w3.org/2000/svg";
+    var g = document.createElementNS(ns, "g");
+    g.setAttribute("class", "plan-marker");
+    g.setAttribute("data-room", obj.roomName);
+    g.setAttribute("data-code", obj.joineryCode || "");
+    var r = (obj.r > 0) ? obj.r : 20;
+
+    var halo = document.createElementNS(ns, "circle");
+    halo.setAttribute("cx", obj.x); halo.setAttribute("cy", obj.y); halo.setAttribute("r", r + 3);
+    halo.setAttribute("fill", "#fff"); halo.setAttribute("opacity", "0.85");
+    g.appendChild(halo);
+
+    var statusCircle = document.createElementNS(ns, "circle");
+    statusCircle.setAttribute("class", "marker-status-circle");
+    statusCircle.setAttribute("cx", obj.x); statusCircle.setAttribute("cy", obj.y); statusCircle.setAttribute("r", r);
+    statusCircle.setAttribute("fill", PLAN_MARKER_PENDING_COLOR);
+    g.appendChild(statusCircle);
+
+    var glyph = document.createElementNS(ns, "text");
+    glyph.setAttribute("class", "marker-status-glyph");
+    glyph.setAttribute("x", obj.x); glyph.setAttribute("y", obj.y);
+    glyph.setAttribute("dy", "0.35em");
+    glyph.setAttribute("text-anchor", "middle");
+    glyph.setAttribute("font-size", Math.round(r * 1.25));
+    glyph.setAttribute("fill", "#fff");
+    glyph.setAttribute("font-family", "'IBM Plex Sans', sans-serif");
+    glyph.textContent = "…"; // ellipsis placeholder while status loads
+    g.appendChild(glyph);
+
+    var labelX = (obj.label && typeof obj.label.x === "number") ? obj.label.x : obj.x;
+    var labelY = (obj.label && typeof obj.label.y === "number") ? obj.label.y : (obj.y + r + 22);
+    var labelText = (obj.label && obj.label.text) ? obj.label.text : obj.roomName;
+    var labelFontSize = (obj.label && obj.label.fontSize) ? obj.label.fontSize : 22;
+    var label = document.createElementNS(ns, "text");
+    label.setAttribute("x", labelX); label.setAttribute("y", labelY);
+    label.setAttribute("text-anchor", "middle");
+    label.setAttribute("font-size", labelFontSize);
+    label.setAttribute("font-family", "'IBM Plex Sans', sans-serif");
+    label.setAttribute("font-weight", "700");
+    label.setAttribute("fill", "#1b2422");
+    label.setAttribute("stroke", "#fff");
+    label.setAttribute("stroke-width", Math.max(2, Math.round(labelFontSize * 0.14)));
+    label.setAttribute("paint-order", "stroke fill");
+    label.textContent = labelText;
+    g.appendChild(label);
+
+    return { g: g, statusCircle: statusCircle, glyph: glyph };
+  }
+
+  function renderLevelPlanScreen(plan){
+    levelPlanTilesG.innerHTML = "";
+    if (plan.imageTiles && plan.imageTiles.length){
+      // Tiled base plan (a large CAD/scanned plan Site Measure couldn't fit
+      // into one data URL) -- one <image> per tile at its own offset within
+      // the shared imageW x imageH world space, same approach Site Measure
+      // and the Viewer both already use. Leave the single-image element
+      // empty so it never shows stale content underneath the tiles.
+      levelPlanImageEl.setAttribute("href", "");
+      levelPlanImageEl.removeAttribute("width");
+      levelPlanImageEl.removeAttribute("height");
+      plan.imageTiles.forEach(function(t){
+        var img = document.createElementNS(levelPlanImageEl.namespaceURI, "image");
+        img.setAttribute("href", t.dataUrl);
+        img.setAttribute("x", t.x); img.setAttribute("y", t.y);
+        img.setAttribute("width", t.w); img.setAttribute("height", t.h);
+        levelPlanTilesG.appendChild(img);
+      });
+    } else {
+      levelPlanImageEl.setAttribute("href", plan.imageDataURL);
+      levelPlanImageEl.setAttribute("width", plan.imageW);
+      levelPlanImageEl.setAttribute("height", plan.imageH);
+    }
+    levelPlanMarkersG.innerHTML = "";
+    var markerRefs = [];
+    plan.roomlinks.forEach(function(obj){
+      var refs = buildPlanMarkerEl(obj);
+      levelPlanMarkersG.appendChild(refs.g);
+      markerRefs.push({ roomName: obj.roomName, joineryCode: obj.joineryCode || "", refs: refs });
+    });
+    // Fit once the screen is actually visible (see the checklist screen's
+    // own signature-pad bug/fix for why this can't happen before showScreen).
+    requestAnimationFrame(fitPlanView);
+    // Resolve each marker's real status independently -- one item's status
+    // taking longer never blocks the others from updating as soon as
+    // they're ready.
+    markerRefs.forEach(function(entry){
+      computeItemItpStatus(entry.roomName, entry.joineryCode).then(function(status){
+        var color = status.total === 0 ? PLAN_MARKER_INCOMPLETE_COLOR :
+          (status.complete ? PLAN_MARKER_COMPLETE_COLOR : PLAN_MARKER_INCOMPLETE_COLOR);
+        entry.refs.statusCircle.setAttribute("fill", color);
+        entry.refs.glyph.textContent = status.complete ? "✓" : "✕";
+      });
+    });
+    return Promise.resolve();
+  }
+
+  function planPointFromEvent(e){ return { x: e.clientX, y: e.clientY }; }
+
+  function planStartPinch(){
+    var pts = Array.from(planPointers.values());
+    var dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+    var mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+    planPinchStart = { dist: dist, mid: mid, view: { scale: planView.scale, tx: planView.tx, ty: planView.ty } };
+  }
+  levelPlanSvg.addEventListener("pointerdown", function(e){
+    levelPlanSvg.setPointerCapture(e.pointerId);
+    planPointers.set(e.pointerId, planPointFromEvent(e));
+    if (planPointers.size === 1){
+      var markerEl = e.target.closest(".plan-marker");
+      planDragStart = { x: e.clientX, y: e.clientY, tx: planView.tx, ty: planView.ty, moved: false, markerEl: markerEl };
+      planPinchStart = null;
+    } else if (planPointers.size === 2){
+      planDragStart = null;
+      planStartPinch();
+    }
+  });
+  levelPlanSvg.addEventListener("pointermove", function(e){
+    if (!planPointers.has(e.pointerId)) return;
+    planPointers.set(e.pointerId, planPointFromEvent(e));
+    if (planPointers.size === 1 && planDragStart){
+      var dx = e.clientX - planDragStart.x, dy = e.clientY - planDragStart.y;
+      if (Math.abs(dx) + Math.abs(dy) > 4) planDragStart.moved = true;
+      planView.tx = planDragStart.tx + dx;
+      planView.ty = planDragStart.ty + dy;
+      applyPlanView();
+    } else if (planPointers.size === 2 && planPinchStart){
+      var pts = Array.from(planPointers.values());
+      var dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      var mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+      var factor = dist / (planPinchStart.dist || 1);
+      var newScale = clampPlanScale(planPinchStart.view.scale * factor);
+      var rect = planViewportEl.getBoundingClientRect();
+      var anchorX = (planPinchStart.mid.x - rect.left - planPinchStart.view.tx) / planPinchStart.view.scale;
+      var anchorY = (planPinchStart.mid.y - rect.top - planPinchStart.view.ty) / planPinchStart.view.scale;
+      planView.scale = newScale;
+      planView.tx = (mid.x - rect.left) - anchorX * newScale;
+      planView.ty = (mid.y - rect.top) - anchorY * newScale;
+      applyPlanView();
+    }
+  });
+  function planPointerEnd(e){
+    var tappedMarkerEl = (planPointers.size === 1 && planDragStart && !planDragStart.moved && planDragStart.markerEl)
+      ? planDragStart.markerEl : null;
+    var tapMarkerRoom = tappedMarkerEl ? tappedMarkerEl.getAttribute("data-room") : null;
+    var tapMarkerCode = tappedMarkerEl ? tappedMarkerEl.getAttribute("data-code") : null;
+    planPointers.delete(e.pointerId);
+    if (planPointers.size === 0){
+      planDragStart = null; planPinchStart = null;
+    } else if (planPointers.size === 1){
+      var remaining = Array.from(planPointers.values())[0];
+      planDragStart = { x: remaining.x, y: remaining.y, tx: planView.tx, ty: planView.ty, moved: true, markerEl: null };
+      planPinchStart = null;
+    }
+    if (tapMarkerRoom){
+      if (tapMarkerCode) openItemFromMarker(tapMarkerRoom, tapMarkerCode);
+      else openRoom(tapMarkerRoom); // legacy marker, pre-dates joinery codes -- fall back to the room's item list
+    }
+  }
+  levelPlanSvg.addEventListener("pointerup", planPointerEnd);
+  levelPlanSvg.addEventListener("pointercancel", planPointerEnd);
+  levelPlanSvg.addEventListener("wheel", function(e){
+    if (!currentLevelPlan) return;
+    e.preventDefault();
+    var rect = planViewportEl.getBoundingClientRect();
+    var factor = Math.exp(-e.deltaY * 0.0016);
+    var newScale = clampPlanScale(planView.scale * factor);
+    var wx = (e.clientX - rect.left - planView.tx) / planView.scale;
+    var wy = (e.clientY - rect.top - planView.ty) / planView.scale;
+    planView.scale = newScale;
+    planView.tx = (e.clientX - rect.left) - wx * newScale;
+    planView.ty = (e.clientY - rect.top) - wy * newScale;
+    applyPlanView();
+  }, { passive: false });
+  document.getElementById("planZoomInBtn").addEventListener("click", function(){
+    var rect = planViewportEl.getBoundingClientRect();
+    var cx = rect.width / 2, cy = rect.height / 2;
+    var wx = (cx - planView.tx) / planView.scale, wy = (cy - planView.ty) / planView.scale;
+    planView.scale = clampPlanScale(planView.scale * 1.35);
+    planView.tx = cx - wx * planView.scale; planView.ty = cy - wy * planView.scale;
+    applyPlanView();
+  });
+  document.getElementById("planZoomOutBtn").addEventListener("click", function(){
+    var rect = planViewportEl.getBoundingClientRect();
+    var cx = rect.width / 2, cy = rect.height / 2;
+    var wx = (cx - planView.tx) / planView.scale, wy = (cy - planView.ty) / planView.scale;
+    planView.scale = clampPlanScale(planView.scale / 1.35);
+    planView.tx = cx - wx * planView.scale; planView.ty = cy - wy * planView.scale;
+    applyPlanView();
+  });
+  document.getElementById("planFitBtn").addEventListener("click", fitPlanView);
+  window.addEventListener("resize", function(){ if (currentLevelPlan) fitPlanView(); });
+
+  /* ============================== room list ============================== */
+  var roomListEl = document.getElementById("roomListEl");
+  function populateRoomList(){
+    return listSubdirNames(state.levelHandle).then(function(names){
+      names = names.filter(function(n){ return n !== "saves" && n !== "pdfs" && n !== "backup"; });
+      roomListEl.innerHTML = "";
+      if (!names.length){
+        roomListEl.innerHTML = '<div class="empty-note">No rooms on this level yet — add one in Site Measure first.</div>';
+        return;
+      }
+      names.forEach(function(name){
+        var row = document.createElement("button");
+        row.type = "button";
+        row.className = "list-row";
+        row.innerHTML = '<div class="row-main"><div class="row-title"></div></div>';
+        row.querySelector(".row-title").textContent = name;
+        row.addEventListener("click", function(){ openRoom(name); });
+        roomListEl.appendChild(row);
+      });
+    });
+  }
+  function ensureItpRoomFolder(){
+    return state.projectHandle.getDirectoryHandle("itp-manufacture", { create: true }).then(function(itpH){
+      return itpH.getDirectoryHandle(state.levelName, { create: true });
+    }).then(function(levelH){
+      return levelH.getDirectoryHandle(state.roomName, { create: true });
+    });
+  }
+  function openRoom(name){
+    state.roomName = name;
+    state.currentJoineryNo = "";
+    updateCrumbs();
+    return state.levelHandle.getDirectoryHandle(name).then(function(dirH){
+      state.roomHandle = dirH;
+      return ensureItpRoomFolder();
+    }).then(function(itpRoomH){
+      state.itpRoomHandle = itpRoomH;
+      document.getElementById("itemsHeading").textContent = "“" + name + "” — joinery items";
+      return populateItemList();
+    }).then(function(){ showScreen("Items"); }).catch(function(err){
+      console.error("Open room failed:", err);
+      showToast("Couldn't open that room — try again.");
+    });
+  }
+  document.getElementById("backToRoomsBtn").addEventListener("click", function(){
+    populateRoomList().then(function(){ showScreen("Rooms"); });
+  });
+
+  // Tapping a joinery-item marker on the Level Plan screen -- jumps
+  // straight into that item's own checklist (creating a blank one keyed to
+  // this room+code if it hasn't been started yet) rather than showing the
+  // room's item list first. "Back" from the checklist still lands on that
+  // room's item list, same as opening it the normal way, since this sets
+  // up state exactly like openRoom() would.
+  function openItemFromMarker(roomName, joineryCode){
+    state.roomName = roomName;
+    state.currentJoineryNo = "";
+    updateCrumbs();
+    return state.levelHandle.getDirectoryHandle(roomName).then(function(dirH){
+      state.roomHandle = dirH;
+      return ensureItpRoomFolder();
+    }).then(function(itpRoomH){
+      state.itpRoomHandle = itpRoomH;
+      document.getElementById("itemsHeading").textContent = "“" + roomName + "” — joinery items";
+      // openItem() itself creates the file if missing and falls back to a
+      // blank checklist in memory when it's empty/unreadable, so there's no
+      // need to pre-check existence here the way "+ New Joinery Item" does
+      // (that only exists there to show an "already exists" toast).
+      var fileName = sanitizeFileBase(joineryCode) + ".json";
+      return openItem(fileName, joineryCode);
+    }).catch(function(err){
+      console.error("Open joinery item from plan failed:", err);
+      showToast("Couldn't open that joinery item — try again.");
+    });
+  }
+
+  /* ============================== joinery item list ============================== */
+  var itemListEl = document.getElementById("itemListEl");
+  function checklistProgress(data){
+    var answered = 0;
+    data.rows.forEach(function(r){ if (r.status) answered++; });
+    var signed = !!(data.signoff.builder.sig && data.signoff.supervisor.sig);
+    return { answered: answered, total: data.rows.length, signed: signed };
+  }
+  // A cloud-sync client (Dropbox desktop/mobile, or an Android storage
+  // provider backing a synced folder) renames rather than overwrites a file
+  // when the SAME joinery item file was written from two places at once --
+  // e.g. two devices open on the same room, or a stale/offline device
+  // catching up. That produces extra .json files sitting right alongside
+  // the real one that the app never created and never asked for:
+  //   "y45ry5r (Andrew Utz's conflicted copy) (1).json"   -- Dropbox's own naming
+  //   "y45ry5r_1234620388645988351.json"                  -- an Android storage
+  //                                                            provider's naming
+  // populateItemList() used to list every .json file in the folder with no
+  // filtering at all, so each of these showed up as its own full joinery
+  // item -- Andrew reported this directly as the list "getting a lot of
+  // garbage." Fixed by recognizing these two known patterns and keeping
+  // them OUT of the main list (never deleting them -- one could hold real
+  // signed-off data from whichever device lost the naming race), tucked
+  // under a collapsed "sync-duplicate files" toggle instead so they can
+  // still be opened and reviewed by hand.
+  function isSyncArtifactFileName(fileName){
+    var base = String(fileName || "").replace(/\.json$/i, "");
+    if (/conflicted copy/i.test(base)) return true;
+    if (/_\d{10,}$/.test(base)) return true;
+    return false;
+  }
+  function buildItemRow(fileName, isArtifact){
+    return state.itpRoomHandle.getFileHandle(fileName).then(function(fh){ return fh.getFile(); })
+      .then(function(file){ return file.text(); })
+      .then(function(text){
+        var data = null;
+        try{ data = JSON.parse(text); }catch(e){ data = null; }
+        var joineryNo = (data && data.joineryNo) || fileName.replace(/\.json$/i, "");
+        var row = document.createElement("button");
+        row.type = "button";
+        row.className = "list-row" + (isArtifact ? " artifact-row" : "");
+        var sub = "Not started";
+        var chipClass = "";
+        var chipText = "Open";
+        if (data){
+          var prog = checklistProgress(data);
+          if (prog.signed) { sub = "Signed off"; chipClass = "done"; chipText = "Signed off"; }
+          else if (prog.answered > 0) sub = prog.answered + " of " + prog.total + " checked";
+        }
+        if (isArtifact){
+          sub = "⚠ Possible sync duplicate — " + sub;
+          chipClass = "warn";
+          chipText = "Review";
+        }
+        row.innerHTML =
+          '<div class="row-main"><div class="row-title"></div><div class="row-sub"></div></div>' +
+          '<div class="row-chip ' + chipClass + '"></div>';
+        row.querySelector(".row-title").textContent = joineryNo;
+        row.querySelector(".row-sub").textContent = sub;
+        row.querySelector(".row-chip").textContent = chipText;
+        row.addEventListener("click", function(){ openItem(fileName, joineryNo); });
+        return row;
+      }).catch(function(){ return null; /* skip an unreadable file rather than failing the whole list */ });
+  }
+  function populateItemList(){
+    return listJsonFileNames(state.itpRoomHandle).then(function(fileNames){
+      itemListEl.innerHTML = "";
+      var cleanNames = fileNames.filter(function(n){ return !isSyncArtifactFileName(n); });
+      var artifactNames = fileNames.filter(isSyncArtifactFileName);
+      if (!cleanNames.length){
+        itemListEl.innerHTML = '<div class="empty-note">No joinery items checked off in this room yet.</div>';
+      }
+      return cleanNames.reduce(function(chain, fileName){
+        return chain.then(function(){
+          return buildItemRow(fileName, false).then(function(row){ if (row) itemListEl.appendChild(row); });
+        });
+      }, Promise.resolve()).then(function(){
+        if (!artifactNames.length) return;
+        var toggleWrap = document.createElement("div");
+        toggleWrap.style.marginTop = "10px";
+        var toggleBtn = document.createElement("button");
+        toggleBtn.type = "button";
+        toggleBtn.className = "mbtn";
+        toggleBtn.textContent = "⚠ " + artifactNames.length + " sync-duplicate file" +
+          (artifactNames.length === 1 ? "" : "s") + " found — tap to review";
+        var artifactsList = document.createElement("div");
+        artifactsList.className = "list";
+        artifactsList.style.marginTop = "8px";
+        artifactsList.style.display = "none";
+        var artifactsBuilt = false;
+        toggleBtn.addEventListener("click", function(){
+          var showing = artifactsList.style.display !== "none";
+          if (showing){ artifactsList.style.display = "none"; return; }
+          artifactsList.style.display = "flex";
+          if (artifactsBuilt) return;
+          artifactsBuilt = true;
+          artifactNames.reduce(function(chain, fileName){
+            return chain.then(function(){
+              return buildItemRow(fileName, true).then(function(row){ if (row) artifactsList.appendChild(row); });
+            });
+          }, Promise.resolve());
+        });
+        toggleWrap.appendChild(toggleBtn);
+        toggleWrap.appendChild(artifactsList);
+        itemListEl.appendChild(toggleWrap);
+      });
+    });
+  }
+  document.getElementById("newItemBtn").addEventListener("click", function(){
+    genericPrompt("Joinery number for this new item:", "").then(function(value){
+      if (value === null) return;
+      var joineryNo = String(value).trim();
+      if (!joineryNo) { showToast("Enter a joinery number first."); return; }
+      var fileName = sanitizeFileBase(joineryNo) + ".json";
+      state.itpRoomHandle.getFileHandle(fileName).then(function(){
+        // Already exists -- open it rather than silently overwriting.
+        showToast("“" + joineryNo + "” already exists — opening it.");
+        return openItem(fileName, joineryNo);
+      }, function(){
+        var blank = blankChecklist(joineryNo);
+        return writeChecklistFile(fileName, blank).then(function(){
+          return populateItemList();
+        }).then(function(){
+          return openItem(fileName, joineryNo);
+        });
+      }).catch(function(err){
+        console.error("Create joinery item failed:", err);
+        showToast("Couldn't create that item — try again.");
+      });
+    });
+  });
+  document.getElementById("backToItemsBtn").addEventListener("click", function(){
+    leaveChecklistScreen();
+  });
+
+  /* ============================== checklist data shape ============================== */
+  function blankChecklist(joineryNo){
+    return {
+      joineryNo: joineryNo,
+      rows: CHECK_ITEMS.map(function(){ return { status: "", comment: "" }; }),
+      notes: "",
+      signoff: {
+        builder: { name: "", date: "", sig: null },
+        supervisor: { name: "", date: "", sig: null }
+      },
+      updatedAt: new Date().toISOString(),
+      // Shared device identity (added v7, UTZLINE Data Standard v1 §6) --
+      // distinct from signoff.builder/supervisor.name above, which stay
+      // hand-typed at the moment of formal sign-off. This is just "who was
+      // last editing on this device", stamped automatically on every
+      // autosave (see writeChecklistFile) -- purely additive, so a blank
+      // string reads exactly like a checklist saved before this field
+      // existed.
+      lastEditedBy: ""
+    };
+  }
+  function writeChecklistFile(fileName, data){
+    data.updatedAt = new Date().toISOString();
+    data.lastEditedBy = deviceUserName || "";
+    var payload = JSON.stringify(data);
+    return state.itpRoomHandle.getFileHandle(fileName, { create: true }).then(function(fh){
+      return fh.createWritable();
+    }).then(function(w){
+      return w.write(payload).then(function(){ return w.close(); });
+    });
+  }
+
+  /* ============================== signature pad ============================== */
+  function setupSignaturePad(canvas, hintEl){
+    var ctx = canvas.getContext("2d");
+    var drawing = false;
+    var last = null;
+    var hasInk = false;
+    function resize(){
+      var rect = canvas.getBoundingClientRect();
+      var ratio = window.devicePixelRatio || 1;
+      var prevData = hasInk ? canvas.toDataURL("image/png") : null;
+      canvas.width = Math.max(1, Math.round(rect.width * ratio));
+      canvas.height = Math.max(1, Math.round(rect.height * ratio));
+      ctx.scale(ratio, ratio);
+      styleStroke();
+      if (prevData){
+        var img = new Image();
+        img.onload = function(){ ctx.drawImage(img, 0, 0, rect.width, rect.height); };
+        img.src = prevData;
+      }
+    }
+    function styleStroke(){
+      ctx.lineWidth = 2.2;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.strokeStyle = getComputedStyle(document.body).getPropertyValue("--text-primary") || "#000";
+    }
+    function pointFromEvent(e){
+      var rect = canvas.getBoundingClientRect();
+      return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    }
+    function down(e){
+      drawing = true; hasInk = true;
+      hintEl.style.display = "none";
+      last = pointFromEvent(e);
+      canvas.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    }
+    function move(e){
+      if (!drawing) return;
+      var p = pointFromEvent(e);
+      ctx.beginPath();
+      ctx.moveTo(last.x, last.y);
+      ctx.lineTo(p.x, p.y);
+      ctx.stroke();
+      last = p;
+      e.preventDefault();
+    }
+    function up(e){
+      if (!drawing) return;
+      drawing = false;
+      if (pad.onStroke) pad.onStroke();
+      e.preventDefault();
+    }
+    canvas.addEventListener("pointerdown", down);
+    canvas.addEventListener("pointermove", move);
+    canvas.addEventListener("pointerup", up);
+    canvas.addEventListener("pointercancel", up);
+    window.addEventListener("resize", resize);
+    resize();
+    var pad = {
+      onStroke: null,
+      isEmpty: function(){ return !hasInk; },
+      // Exposed so the checklist screen can force a re-measure right after
+      // it becomes visible -- the canvas's internal pixel buffer is sized
+      // off getBoundingClientRect(), which reads 0x0 while its screen is
+      // still display:none (e.g. at page load, before any item is ever
+      // opened), so a resize triggered only by the window "resize" event
+      // would otherwise leave it permanently locked to a 1x1 buffer.
+      resize: resize,
+      clear: function(){
+        hasInk = false;
+        var rect = canvas.getBoundingClientRect();
+        ctx.clearRect(0, 0, rect.width, rect.height);
+        hintEl.style.display = "";
+      },
+      toDataURL: function(){ return hasInk ? canvas.toDataURL("image/png") : null; },
+      loadFromDataURL: function(url){
+        if (!url) { hintEl.style.display = ""; return; }
+        hasInk = true;
+        hintEl.style.display = "none";
+        var img = new Image();
+        img.onload = function(){
+          var rect = canvas.getBoundingClientRect();
+          ctx.drawImage(img, 0, 0, rect.width, rect.height);
+        };
+        img.src = url;
+      }
+    };
+    return pad;
+  }
+
+  /* ============================== checklist screen ============================== */
+  var checkRowsEl = document.getElementById("checkRowsEl");
+  var notesEl = document.getElementById("notesEl");
+  var signoffBlocks = Array.prototype.slice.call(document.querySelectorAll(".signoff-block"));
+  var signaturePads = {}; // role -> pad
+  var rowEls = []; // per-row DOM refs
+  var saveTimer = null;
+  var dirty = false;
+
+  // Build the 16 rows' DOM once; re-populated per item on load.
+  CHECK_ITEMS.forEach(function(text, i){
+    var row = document.createElement("div");
+    row.className = "check-row";
+    row.innerHTML =
+      '<div class="cr-top"><div class="cr-num"></div><div class="cr-text"></div></div>' +
+      '<div class="tri">' +
+        '<button type="button" class="sel-yes" data-status="yes">Yes</button>' +
+        '<button type="button" class="sel-no" data-status="no">No</button>' +
+        '<button type="button" class="sel-na" data-status="na">N/A</button>' +
+      '</div>' +
+      '<input type="text" class="cr-comment" placeholder="Comments">';
+    row.querySelector(".cr-num").textContent = String(i + 1);
+    row.querySelector(".cr-text").textContent = text;
+    var triButtons = Array.prototype.slice.call(row.querySelectorAll(".tri button"));
+    var commentInput = row.querySelector(".cr-comment");
+    triButtons.forEach(function(btn){
+      btn.addEventListener("click", function(){
+        var already = btn.classList.contains("selected");
+        triButtons.forEach(function(b){ b.classList.remove("selected"); });
+        var newStatus = already ? "" : btn.getAttribute("data-status");
+        if (!already) btn.classList.add("selected");
+        if (state.currentData) state.currentData.rows[i].status = newStatus;
+        markDirty();
+      });
+    });
+    commentInput.addEventListener("input", function(){
+      if (state.currentData) state.currentData.rows[i].comment = commentInput.value;
+      markDirty();
+    });
+    checkRowsEl.appendChild(row);
+    rowEls.push({ triButtons: triButtons, commentInput: commentInput });
+  });
+
+  signoffBlocks.forEach(function(block){
+    var role = block.getAttribute("data-role");
+    var nameInput = block.querySelector(".so-name");
+    var dateInput = block.querySelector(".so-date");
+    var canvas = block.querySelector(".sig-canvas");
+    var hint = block.querySelector(".sig-pad-empty-hint");
+    var clearBtn = block.querySelector(".sig-clear-btn");
+    var pad = setupSignaturePad(canvas, hint);
+    pad.onStroke = function(){
+      if (state.currentData) state.currentData.signoff[role].sig = pad.toDataURL();
+      markDirty();
+    };
+    nameInput.addEventListener("input", function(){
+      if (!state.currentData) return;
+      state.currentData.signoff[role].name = nameInput.value;
+      // Auto-populate today's date the moment a name is first typed, but
+      // never override a date someone deliberately set (or changed) --
+      // only fills in while the field is still empty.
+      if (nameInput.value.trim() && !dateInput.value){
+        dateInput.value = todayISO();
+        state.currentData.signoff[role].date = dateInput.value;
+      }
+      markDirty();
+    });
+    dateInput.addEventListener("input", function(){
+      if (state.currentData) state.currentData.signoff[role].date = dateInput.value;
+      markDirty();
+    });
+    clearBtn.addEventListener("click", function(){
+      pad.clear();
+      if (state.currentData) state.currentData.signoff[role].sig = null;
+      markDirty();
+    });
+    signaturePads[role] = { pad: pad, nameInput: nameInput, dateInput: dateInput };
+  });
+
+  notesEl.addEventListener("input", function(){
+    if (state.currentData) state.currentData.notes = notesEl.value;
+    markDirty();
+  });
+
+  function markDirty(){
+    dirty = true;
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(flushPendingSave, 900);
+  }
+  function flushPendingSave(){
+    clearTimeout(saveTimer);
+    if (!dirty || !state.currentData || !state.currentFileHandle) return Promise.resolve();
+    dirty = false;
+    var fileName = state.currentFileHandle.name;
+    return writeChecklistFile(fileName, state.currentData).catch(function(err){
+      console.error("Autosave failed:", err);
+    });
+  }
+
+  function renderChecklistIntoScreen(data){
+    document.getElementById("tbProjectNo").textContent = (state.projectMeta && state.projectMeta.no) || "—";
+    document.getElementById("tbProjectNo").classList.toggle("empty", !(state.projectMeta && state.projectMeta.no));
+    document.getElementById("tbProjectName").textContent = (state.projectMeta && state.projectMeta.name) || state.projectName;
+    document.getElementById("tbContractor").textContent = (state.projectMeta && state.projectMeta.contractor) || "—";
+    document.getElementById("tbContractor").classList.toggle("empty", !(state.projectMeta && state.projectMeta.contractor));
+    document.getElementById("tbLevel").textContent = state.levelName;
+    document.getElementById("tbRoom").textContent = state.roomName;
+    document.getElementById("tbJoinery").textContent = data.joineryNo;
+
+    data.rows.forEach(function(r, i){
+      var refs = rowEls[i];
+      refs.triButtons.forEach(function(btn){
+        btn.classList.toggle("selected", btn.getAttribute("data-status") === r.status);
+      });
+      refs.commentInput.value = r.comment || "";
+    });
+    notesEl.value = data.notes || "";
+    ["builder", "supervisor"].forEach(function(role){
+      var ref = signaturePads[role];
+      ref.nameInput.value = data.signoff[role].name || "";
+      ref.dateInput.value = data.signoff[role].date || "";
+      ref.pad.resize();
+      ref.pad.clear();
+      ref.pad.loadFromDataURL(data.signoff[role].sig);
+    });
+  }
+
+  function openItem(fileName, joineryNo){
+    return flushPendingSave().then(function(){
+      return state.itpRoomHandle.getFileHandle(fileName, { create: true });
+    }).then(function(fh){
+      state.currentFileHandle = fh;
+      return fh.getFile();
+    }).then(function(file){
+      return file.text();
+    }).then(function(text){
+      var data = null;
+      try{ data = JSON.parse(text); }catch(e){ data = null; }
+      if (!data || !Array.isArray(data.rows) || data.rows.length !== CHECK_ITEMS.length){
+        data = blankChecklist(joineryNo);
+      }
+      state.currentData = data;
+      state.currentJoineryNo = data.joineryNo || joineryNo;
+      updateCrumbs();
+      // Show the screen BEFORE rendering into it: the signature pads size
+      // their internal canvas resolution off getBoundingClientRect(), which
+      // reads zero while the screen is still display:none, so resizing
+      // them has to happen only once the screen is actually laid out.
+      showScreen("Checklist");
+      renderChecklistIntoScreen(data);
+    }).catch(function(err){
+      console.error("Open joinery item failed:", err);
+      showToast("Couldn't open that item — try again.");
+    });
+  }
+
+  document.getElementById("saveChecklistBtn").addEventListener("click", function(){
+    dirty = true;
+    flushPendingSave().then(function(){ showToast("Saved."); });
+  });
+
+  document.getElementById("deleteItemBtn").addEventListener("click", function(){
+    if (!state.currentFileHandle) return;
+    genericConfirm("Delete the checklist for “" + state.currentJoineryNo + "”? This can't be undone.").then(function(ok){
+      if (!ok) return;
+      var fileName = state.currentFileHandle.name;
+      clearTimeout(saveTimer); dirty = false;
+      state.itpRoomHandle.removeEntry(fileName).then(function(){
+        showToast("Deleted “" + state.currentJoineryNo + "”.");
+        return populateItemList();
+      }).then(function(){ showScreen("Items"); }).catch(function(err){
+        console.error("Delete joinery item failed:", err);
+        showToast("Couldn't delete that item — try again.");
+      });
+    });
+  });
+
+  /* ============================== PDF export ============================== */
+  function wrapText(doc, text, maxWidth){
+    return doc.splitTextToSize(text || "", maxWidth);
+  }
+  function exportChecklistPdf(){
+    if (!window.jspdf || !window.jspdf.jsPDF){
+      showToast("PDF library failed to load — check your connection and reload.");
+      return Promise.resolve();
+    }
+    var data = state.currentData;
+    var doc = new window.jspdf.jsPDF({ orientation: "portrait", unit: "pt", format: "a4", compress: true });
+    var pageW = doc.internal.pageSize.getWidth();
+    var pageH = doc.internal.pageSize.getHeight();
+    var margin = 36;
+    var contentW = pageW - margin * 2;
+
+    // ---- both logos, top of EVERY page -- company logo on the left,
+    // UTZLINE ITP's own brand mark on the right (Andrew, 2026-09-19: "maybe
+    // they both go at the top. Company logo on the left utzline on the
+    // right", also asking for both 2x the previous size). Actual drawing
+    // happens in the stampLogosOnEveryPage() post-processing pass below
+    // (same technique the brand mark already used) since it needs to touch
+    // every page, including ones added after this point -- but the SIZE is
+    // computed here, up front, because every page's own content needs to
+    // start below this band, not just page 1's.
+    var companyLogoW = 0, companyLogoH = 0;
+    if (state.companyLogoDataUrl && state.companyLogoW > 0 && state.companyLogoH > 0){
+      var maxLogoW = 180, maxLogoH = 92; // 2x the original 90x46 box
+      var logoScale = Math.min(maxLogoW / state.companyLogoW, maxLogoH / state.companyLogoH, 1);
+      companyLogoW = state.companyLogoW * logoScale;
+      companyLogoH = state.companyLogoH * logoScale;
+    }
+    var utzLogoSize = 48; // 2x the original 24px footer mark
+    var topBandH = Math.max(companyLogoH, utzLogoSize);
+    var topContentY = margin + topBandH + 14;
+    var y = topContentY;
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(15);
+    doc.text("PRE DELIVERY — CHECKLIST", margin, y);
+    y += 10;
+    doc.setDrawColor(20).setLineWidth(1);
+    doc.line(margin, y, pageW - margin, y);
+    y += 16;
+
+    var meta = state.projectMeta || {};
+    var fields = [
+      ["Project No.", meta.no || "—"], ["Project", meta.name || state.projectName],
+      ["Head Contractor / Builder", meta.contractor || "—"], ["Level", state.levelName],
+      ["Area / Room", state.roomName], ["Joinery No.", data.joineryNo]
+    ];
+    doc.setFontSize(9.5);
+    var colW = contentW / 2;
+    fields.forEach(function(f, i){
+      var col = i % 2, row = Math.floor(i / 2);
+      var fx = margin + col * colW;
+      var fy = y + row * 28;
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(90);
+      doc.text(f[0].toUpperCase(), fx, fy);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(20);
+      doc.text(String(f[1]), fx, fy + 13);
+    });
+    y += Math.ceil(fields.length / 2) * 28 + 10;
+    doc.setDrawColor(20).line(margin, y, pageW - margin, y);
+    y += 16;
+
+    // ---- checklist table ----
+    // Andrew (2026-09-19): "the itp exort forms need gridlines for na / no /
+    // yes. can we make the itp export look more like the app." Previously
+    // each row was a single outer rect() with no internal column dividers
+    // at all, and a plain black "X" regardless of which status it was --
+    // nothing here echoed the app's own colored Yes/No/N-A tri-buttons
+    // (green/red/blue, see the .tri CSS rules). Now: real vertical
+    // gridlines between every column on every row (and in the header), and
+    // the selected status's own cell gets a light tint of that same color
+    // with the "X" drawn in its ink color -- same three colors the on-screen
+    // tri-buttons use, including the new blue for N/A (Andrew, same note:
+    // "N/A on the itp i want to be blue").
+    var STATUS_COLORS = {
+      yes: { fill: [217, 242, 227], border: [31, 138, 76], ink: [20, 106, 57] },
+      no:  { fill: [251, 221, 212], border: [200, 57, 28], ink: [150, 40, 20] },
+      na:  { fill: [219, 233, 251], border: [28, 111, 209], ink: [15, 79, 158] }
+    };
+    var colNumW = 20, colYnaW = 26, colCommentW = 130;
+    var colTextW = contentW - colNumW - colYnaW * 3 - colCommentW;
+    var colBoundaries = [colNumW, colTextW, colYnaW, colYnaW, colYnaW]; // colComment fills the rest
+    var headerH = 16;
+    doc.setFillColor(20, 20, 20);
+    doc.rect(margin, y, contentW, headerH, "F");
+    doc.setTextColor(255).setFont("helvetica", "bold").setFontSize(8);
+    var hx = margin + 3;
+    doc.text("#", hx, y + 11); hx += colNumW;
+    doc.text("CHECK ITEM", hx, y + 11); hx += colTextW;
+    ["YES", "NO", "N/A"].forEach(function(lbl){
+      doc.text(lbl, hx + colYnaW / 2, y + 11, { align: "center" }); hx += colYnaW;
+    });
+    doc.text("COMMENTS", hx, y + 11);
+    // Header column dividers, in a mid-gray that reads on the black fill.
+    (function(){
+      var lx = margin;
+      doc.setDrawColor(90).setLineWidth(0.5);
+      colBoundaries.forEach(function(w){ lx += w; doc.line(lx, y, lx, y + headerH); });
+    })();
+    y += headerH;
+
+    doc.setTextColor(20);
+    CHECK_ITEMS.forEach(function(text, i){
+      var row = data.rows[i];
+      var lines = wrapText(doc, (i + 1) + ". " + text, colTextW - 6);
+      var commentLines = wrapText(doc, row.comment || "", colCommentW - 6);
+      var lineH = 9;
+      var rowH = Math.max(lines.length, commentLines.length, 1) * lineH + 6;
+      if (y + rowH > pageH - 170){
+        doc.addPage();
+        y = topContentY;
+      }
+      // Tint the selected status's own cell BEFORE the grid/text draws on
+      // top of it, same color family as the matching on-screen tri-button.
+      if (row.status && STATUS_COLORS[row.status]){
+        var selX = margin + colNumW + colTextW + colYnaW * ["yes", "no", "na"].indexOf(row.status);
+        doc.setFillColor.apply(doc, STATUS_COLORS[row.status].fill);
+        doc.rect(selX, y, colYnaW, rowH, "F");
+      }
+      doc.setDrawColor(180).setLineWidth(0.5);
+      doc.rect(margin, y, contentW, rowH);
+      var cx = margin + 3;
+      doc.setFont("helvetica", "normal").setFontSize(7.6);
+      doc.text(String(i + 1), cx, y + 10);
+      cx += colNumW;
+      doc.text(lines, cx, y + 9);
+      cx += colTextW;
+      ["yes", "no", "na"].forEach(function(key){
+        if (row.status === key){
+          doc.setFont("helvetica", "bold");
+          doc.setTextColor.apply(doc, STATUS_COLORS[key].ink);
+          doc.text("X", cx + colYnaW / 2, y + rowH / 2 + 3, { align: "center" });
+          doc.setFont("helvetica", "normal");
+          doc.setTextColor(20);
+        }
+        cx += colYnaW;
+      });
+      doc.text(commentLines, cx, y + 9);
+      // Vertical column dividers for this row, drawn last so they sit on
+      // top of both the status tint and the outer rect().
+      (function(){
+        var lx = margin;
+        doc.setDrawColor(180).setLineWidth(0.5);
+        colBoundaries.forEach(function(w){ lx += w; doc.line(lx, y, lx, y + rowH); });
+      })();
+      y += rowH;
+    });
+    y += 18;
+
+    // ---- notes ----
+    if (y > pageH - 140){ doc.addPage(); y = topContentY; }
+    doc.setFont("helvetica", "bold").setFontSize(10);
+    doc.text("NOTES / COMMENTS / MISSING PARTS", margin, y);
+    y += 8;
+    var notesLines = wrapText(doc, data.notes || "(none)", contentW - 12);
+    var notesH = Math.max(40, notesLines.length * 11 + 12);
+    doc.setDrawColor(180).rect(margin, y, contentW, notesH);
+    doc.setFont("helvetica", "normal").setFontSize(9);
+    doc.text(notesLines, margin + 6, y + 13);
+    y += notesH + 18;
+
+    // ---- sign-off ----
+    if (y > pageH - 150){ doc.addPage(); y = topContentY; }
+    doc.setFont("helvetica", "bold").setFontSize(10);
+    doc.text("SIGN-OFF / APPROVAL", margin, y);
+    y += 10;
+    // Side by side, not stacked (Andrew, 2026-09-19: "bottom signatures on
+    // the exports to be side by side to save space") -- both roles now
+    // share one row of two half-width columns instead of each taking the
+    // full content width on its own line. The old layout put the signature
+    // box beside the Name/Date text on the same line, which only worked at
+    // full page width; at half width there isn't room for both side by
+    // side, so each column now stacks its own label/Name/Date above its
+    // own signature box instead -- taller per column, but only ONE row of
+    // two instead of two full-width rows, which is the actual space saving
+    // requested.
+    var roles = [
+      ["builder", "Joinery Builder"],
+      ["supervisor", "Metro Factory / Workshop Supervisor"]
+    ];
+    var sigGap = 14;
+    var sigColW = (contentW - sigGap) / 2;
+    var sigBlockH = 104;
+    if (y + sigBlockH > pageH - margin){ doc.addPage(); y = topContentY; }
+    roles.forEach(function(r, idx){
+      var role = r[0], label = r[1];
+      var so = data.signoff[role];
+      var bx = margin + idx * (sigColW + sigGap);
+      doc.setDrawColor(180).rect(bx, y, sigColW, sigBlockH);
+      doc.setFont("helvetica", "bold").setFontSize(9).setTextColor(20);
+      doc.text(label, bx + 8, y + 14, { maxWidth: sigColW - 16 });
+      doc.setFont("helvetica", "normal").setFontSize(8.5);
+      doc.text("Name: " + (so.name || "—"), bx + 8, y + 32);
+      doc.text("Date: " + (so.date || "—"), bx + 8, y + 46);
+      var sigBoxX = bx + 8, sigBoxY = y + 54, sigBoxW = sigColW - 16, sigBoxH = 42;
+      doc.setDrawColor(180).rect(sigBoxX, sigBoxY, sigBoxW, sigBoxH);
+      if (so.sig){
+        try{ doc.addImage(so.sig, "PNG", sigBoxX + 4, sigBoxY + 4, sigBoxW - 8, sigBoxH - 8, undefined, "FAST"); }catch(e){}
+      } else {
+        doc.setFontSize(7.5).setTextColor(150);
+        doc.text("(not signed)", sigBoxX + sigBoxW / 2, sigBoxY + sigBoxH / 2, { align: "center" });
+        doc.setTextColor(20);
+      }
+    });
+    y += sigBlockH + 10;
+
+    doc.setFont("helvetica", "normal").setFontSize(7).setTextColor(140);
+    doc.text("Generated by UTZLINE Manufacture ITP — " + new Date().toLocaleString(), margin, pageH - 16);
+
+    // ---- both logos, top of EVERY page -- company logo top-left, UTZLINE
+    // ITP's own brand mark top-right (Andrew, 2026-09-19). Total page count
+    // isn't known until everything above has been laid out, so this is a
+    // post-processing pass over every page already created, stamped after
+    // all content -- doc.setPage() just changes which page subsequent
+    // drawing calls target, it doesn't lose anything already drawn on the
+    // pages visited along the way.
+    (function stampLogosOnEveryPage(){
+      var totalPages = doc.internal.getNumberOfPages();
+      var originalPage = doc.internal.getCurrentPageInfo().pageNumber;
+      for (var p = 1; p <= totalPages; p++){
+        doc.setPage(p);
+        if (companyLogoW > 0 && companyLogoH > 0){
+          try{
+            doc.addImage(state.companyLogoDataUrl, "PNG", margin, margin, companyLogoW, companyLogoH, undefined, "FAST");
+          }catch(e){ console.error("Company logo failed to draw in PDF:", e); }
+        }
+        try{
+          doc.addImage(UTZLINE_ITP_LOGO_DATA_URL, "PNG", pageW - margin - utzLogoSize, margin, utzLogoSize, utzLogoSize, undefined, "FAST");
+        }catch(e){ console.error("UTZLINE ITP logo failed to draw in PDF:", e); }
+      }
+      doc.setPage(originalPage);
+    })();
+
+    var fileName = sanitizeFileBase(data.joineryNo) + "_" + timestampForFilename() + ".pdf";
+    var blob = doc.output("blob");
+    return state.itpRoomHandle.getFileHandle(fileName, { create: true }).then(function(fh){
+      return fh.createWritable();
+    }).then(function(w){
+      return w.write(blob).then(function(){ return w.close(); });
+    }).then(function(){
+      showToast("Exported “" + fileName + "”.");
+    });
+  }
+  document.getElementById("exportPdfBtn").addEventListener("click", function(){
+    flushPendingSave().then(exportChecklistPdf).catch(function(err){
+      console.error("Export PDF failed:", err);
+      showToast("Couldn't export the PDF — try again.");
+    });
+  });
+
+  /* ============================== generic prompt / confirm modals ============================== */
+  var promptBackdrop = document.getElementById("promptBackdrop");
+  var promptLabelEl = document.getElementById("promptLabel");
+  var promptInput = document.getElementById("promptInput");
+  var promptOk = document.getElementById("promptOk");
+  var promptCancel = document.getElementById("promptCancel");
+  var promptResolve = null;
+  function genericPrompt(label, initial){
+    promptLabelEl.textContent = label;
+    promptInput.value = initial || "";
+    promptBackdrop.hidden = false;
+    promptInput.focus();
+    promptInput.select();
+    return new Promise(function(resolve){ promptResolve = resolve; });
+  }
+  function closePrompt(value){
+    promptBackdrop.hidden = true;
+    var r = promptResolve; promptResolve = null;
+    if (r) r(value);
+  }
+  promptOk.addEventListener("click", function(){ closePrompt(promptInput.value); });
+  promptCancel.addEventListener("click", function(){ closePrompt(null); });
+  promptBackdrop.addEventListener("click", function(e){ if (e.target === promptBackdrop) closePrompt(null); });
+  promptInput.addEventListener("keydown", function(e){
+    if (e.key === "Enter"){ e.preventDefault(); closePrompt(promptInput.value); }
+    else if (e.key === "Escape"){ e.preventDefault(); closePrompt(null); }
+  });
+
+  var confirmBackdrop = document.getElementById("confirmBackdrop");
+  var confirmMsgEl = document.getElementById("confirmMsg");
+  var confirmOk = document.getElementById("confirmOk");
+  var confirmCancel = document.getElementById("confirmCancel");
+  var confirmResolve = null;
+  function genericConfirm(msg){
+    confirmMsgEl.textContent = msg;
+    confirmBackdrop.hidden = false;
+    return new Promise(function(resolve){ confirmResolve = resolve; });
+  }
+  function closeConfirm(value){
+    confirmBackdrop.hidden = true;
+    var r = confirmResolve; confirmResolve = null;
+    if (r) r(value);
+  }
+  confirmOk.addEventListener("click", function(){ closeConfirm(true); });
+  confirmCancel.addEventListener("click", function(){ closeConfirm(false); });
+  confirmBackdrop.addEventListener("click", function(e){ if (e.target === confirmBackdrop) closeConfirm(false); });
+
+  /* ============================== leave-checklist confirm ============================== */
+  // Same three-way dialog as Site Measure/Viewer (Save & leave / Leave
+  // without saving / Cancel) -- resolves "save"|"discard"|"cancel", same
+  // shape as that app's own showLeaveConfirm.
+  var leaveConfirmBackdrop = document.getElementById("leaveConfirmBackdrop");
+  var leaveConfirmSaveBtn = document.getElementById("leaveConfirmSave");
+  var leaveConfirmDiscardBtn = document.getElementById("leaveConfirmDiscard");
+  var leaveConfirmCancelBtn = document.getElementById("leaveConfirmCancel");
+  var leaveConfirmResolve = null;
+  function showLeaveConfirm(){
+    leaveConfirmBackdrop.hidden = false;
+    return new Promise(function(resolve){ leaveConfirmResolve = resolve; });
+  }
+  function closeLeaveConfirm(result){
+    leaveConfirmBackdrop.hidden = true;
+    var r = leaveConfirmResolve; leaveConfirmResolve = null;
+    if (r) r(result);
+  }
+  leaveConfirmSaveBtn.addEventListener("click", function(){ closeLeaveConfirm("save"); });
+  leaveConfirmDiscardBtn.addEventListener("click", function(){ closeLeaveConfirm("discard"); });
+  leaveConfirmCancelBtn.addEventListener("click", function(){ closeLeaveConfirm("cancel"); });
+  leaveConfirmBackdrop.addEventListener("click", function(e){ if (e.target === leaveConfirmBackdrop) closeLeaveConfirm("cancel"); });
+
+  // The Checklist screen's one and only way out (its "back-link", styled
+  // like every other screen's back link) -- guarded by the dialog above
+  // whenever a real edit is still unsaved (the same `dirty` flag autosave
+  // already tracks), so leaving never silently discards or silently saves
+  // without the user choosing to. When nothing's unsaved (the common
+  // case, since autosave usually already caught up) it just goes straight
+  // back, no dialog needed. Landing spot either way is the joinery-items
+  // list for this room -- one level up from the checklist.
+  function leaveChecklistScreen(){
+    if (!dirty){
+      return populateItemList().then(function(){ showScreen("Items"); });
+    }
+    return showLeaveConfirm().then(function(choice){
+      if (choice === "cancel") return; // stay put, nothing changes
+      if (choice === "discard"){
+        clearTimeout(saveTimer);
+        dirty = false; // pending edit is being thrown away, not saved
+        return populateItemList().then(function(){ showScreen("Items"); });
+      }
+      return flushPendingSave().then(function(){
+        return populateItemList();
+      }).then(function(){ showScreen("Items"); });
+    });
+  }
+
+  /* ============================== boot ============================== */
+  if (!window.showDirectoryPicker){
+    document.body.innerHTML = '<main><div class="setup-card"><h2>Browser not supported</h2>' +
+      '<p class="hint">UTZLINE Manufacture ITP needs a browser with File System Access support (Chrome, Edge, or the installed Android/desktop app). Please open it there instead.</p></div></main>';
+  } else {
+    loadCompanyLogo();
+    tryRestoreRoot();
+    loadDeviceUserName(); // shared device identity (added v7) -- never blocks boot
+  }
+
+  window.addEventListener("beforeunload", function(){
+    // Best-effort only -- a synchronous flush isn't possible here, but this
+    // at least stops a stale timer from firing after the page is gone.
+    if (dirty) flushPendingSave();
+  });
+})();
+</script>
+
+<script>
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", function () {
+    navigator.serviceWorker.register("./service-worker.js").catch(function (err) {
+      console.warn("UTZLINE Manufacture ITP: service worker registration failed", err);
+    });
+  });
+}
+</script>
+</html>
