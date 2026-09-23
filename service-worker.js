@@ -97,7 +97,7 @@
 // record saved before that field existed -- feeds the Register's own
 // status-history hover.
 var ICON_VERSION = "v1";
-var CACHE_NAME = "utzline-manufacture-itp-cache-v5";
+var CACHE_NAME = "utzline-manufacture-itp-cache-v6";
 
 var PRECACHE_URLS = [
   "./",

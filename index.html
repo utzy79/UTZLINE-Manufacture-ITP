@@ -1488,7 +1488,7 @@ body.plan-fullscreen .plan-viewport{
         // install rename) -- none of the three should ever show up as if
         // it were a level (same exclusion Site Measure's own
         // listExistingLevels applies).
-        return names.filter(function(n){ return n !== "itp" && n !== "itp-install" && n !== "itp-manufacture"; });
+        return names.filter(function(n){ return n !== "itp" && n !== "itp-install" && n !== "itp-manufacture" && n !== "itp-delivery"; });
       });
     return namesPromise.then(function(names){
       levelListEl.innerHTML = "";
