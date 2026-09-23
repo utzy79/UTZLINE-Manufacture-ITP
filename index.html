@@ -888,19 +888,44 @@ body.plan-fullscreen .plan-viewport{
      note attached from Site Measure/the Viewer, completely decoupled from
      this status field. This app never sets that flag, only reads it, via
      joineryDisplayIcon below, for the same reason it reads status. */
+  // EXPANDED 2026-09-23 (Andrew, on the Joinery Register) -- mirrors
+  // source.html's own expansion exactly: two new stages, "in_manufacture"
+  // (this app's OWN checklist opened, not yet signed -- see the new
+  // syncInManufactureOnOpen call in openItem below) and "delivered" (a
+  // placeholder reserved for a future Delivery ITP app -- nothing writes it
+  // yet). The internal string "manufactured" is unchanged; only its
+  // display LABEL in UTZLINE Projects' Joinery Register changed ("Ready to
+  // dispatch") -- this app still only ever writes "manufactured" on its own
+  // sign-off, exactly as before.
   function joineryStatusRank(status){
-    return status === "installed" ? 3 : status === "manufactured" ? 2 : status === "measured" ? 1 : 0;
+    switch (status){
+      case "installed": return 5;
+      case "delivered": return 4;
+      case "manufactured": return 3;
+      case "in_manufacture": return 2;
+      case "measured": return 1;
+      default: return 0;
+    }
   }
   function joineryStatusIcon(status){
-    return status === "installed" ? "🏆" : status === "manufactured" ? "📦" : status === "measured" ? "📏" : "";
+    switch (status){
+      case "installed": return "🏆";
+      case "delivered": return "🚚";
+      case "manufactured": return "📦";
+      case "in_manufacture": return "🏭";
+      case "measured": return "📏";
+      default: return "";
+    }
   }
   // Mirrors source.html's own joineryDisplayIcon exactly -- see its comment
-  // for the priority ordering (installed/manufactured beat a job note,
-  // which beats a bare "measured").
+  // for the priority ordering (installed/delivered/ready-to-dispatch/in-
+  // manufacture beat a job note, which beats a bare "measured").
   function joineryDisplayIcon(rec){
     if (!rec) return "";
     if (rec.status === "installed") return "🏆";
+    if (rec.status === "delivered") return "🚚";
     if (rec.status === "manufactured") return "📦";
+    if (rec.status === "in_manufacture") return "🏭";
     if (rec.jobNote) return "🛠️";
     if (rec.status === "measured") return "📏";
     return "";
@@ -936,10 +961,19 @@ body.plan-fullscreen .plan-viewport{
       var newRank = joineryStatusRank(newStatus);
       if (newRank <= curRank) return rec ? rec.status : null;
       var stamp = new Date().toISOString();
+      var histEntry = { status: newStatus, at: stamp, by: updatedBy || "" };
       if (rec){
+        // Backfill (2026-09-23, mirrors source.html's own comment): a
+        // record written before `history` existed only ever kept its most
+        // recent transition's updatedAt/updatedBy -- seed one entry from
+        // that rather than starting empty.
+        if (!Array.isArray(rec.history)){
+          rec.history = (rec.status && rec.updatedAt) ? [{ status: rec.status, at: rec.updatedAt, by: rec.updatedBy || "" }] : [];
+        }
         rec.status = newStatus; rec.updatedAt = stamp; rec.updatedBy = updatedBy || "";
+        rec.history.push(histEntry);
       } else {
-        list.push({ level: level, room: room || "", joineryId: joineryId || "", status: newStatus, updatedAt: stamp, updatedBy: updatedBy || "" });
+        list.push({ level: level, room: room || "", joineryId: joineryId || "", status: newStatus, updatedAt: stamp, updatedBy: updatedBy || "", history: [histEntry] });
       }
       var payload = JSON.stringify(list);
       return projectHandle.getFileHandle("joinery-status.json", { create: true }).then(function(fh){
@@ -959,8 +993,28 @@ body.plan-fullscreen .plan-viewport{
   // when the checklist isn't (yet) fully signed.
   function syncJoineryStatusFromChecklist(data, level, room, joineryId){
     if (!data || !checklistProgress(data).signed) return Promise.resolve(null);
-    return setJoineryStatusForward(state.projectHandle, level, room, joineryId, "manufactured", "Manufacture ITP").catch(function(err){
+    // Prefers the real signed-in device identity (2026-09-23, so the
+    // Register's own status-history hover shows an actual person rather
+    // than just the app's name whenever one's known) -- falls back to the
+    // app name exactly as before when no device identity has been set.
+    return setJoineryStatusForward(state.projectHandle, level, room, joineryId, "manufactured", deviceUserName || "Manufacture ITP").catch(function(err){
       console.error("Syncing joinery status failed:", err);
+      return null;
+    });
+  }
+  // New (2026-09-23, Andrew: "ready to dispatch...comes from the
+  // manufacture itp being completed" -- confirming the pipeline needed an
+  // earlier, in-progress stage too, "in manufacture", for the moment a
+  // checklist is merely STARTED rather than finished). Called unconditionally
+  // every time this app's own checklist is opened, regardless of whether
+  // it's signed yet -- the forward-only guard in setJoineryStatusForward
+  // means this is a safe no-op for an item that's already at or past
+  // "in_manufacture" (including one that's already "manufactured" or
+  // further along), so it never needs its own separate "already advanced"
+  // check the way the popover-row callers elsewhere do.
+  function syncInManufactureOnOpen(level, room, joineryId){
+    return setJoineryStatusForward(state.projectHandle, level, room, joineryId, "in_manufacture", deviceUserName || "Manufacture ITP").catch(function(err){
+      console.error("Marking in-manufacture failed:", err);
       return null;
     });
   }
@@ -2609,10 +2663,25 @@ body.plan-fullscreen .plan-viewport{
       // them has to happen only once the screen is actually laid out.
       showScreen("Checklist");
       renderChecklistIntoScreen(data);
-      // Backfill for a checklist signed off before 2026-09-22 (see
-      // syncJoineryStatusFromChecklist's own comment) -- harmless, instant
-      // no-op for every other checklist (unsigned, or already synced).
-      syncJoineryStatusFromChecklist(data, state.levelName, state.roomName, state.currentJoineryNo);
+      // New (2026-09-23): opening this item's checklist at all -- signed or
+      // not -- is itself the "in manufacture" event (a factory worker has
+      // started on it). Forward-only, so this is a harmless no-op for an
+      // item that's already at or past this stage.
+      // IMPORTANT: chained, not fired concurrently with the backfill call
+      // below -- both calls do their own read-modify-write of the same
+      // joinery-status.json, and firing them side by side races two writes
+      // against each other (each reads the file before the other's write
+      // lands, so whichever finishes last silently clobbers the other's
+      // result -- caught by run_manufacture_itp_status_signoff.js, where an
+      // already-signed checklist's backfill was landing on "in_manufacture"
+      // instead of "manufactured"). Chaining guarantees the backfill below
+      // always reads the status this call just wrote.
+      syncInManufactureOnOpen(state.levelName, state.roomName, state.currentJoineryNo).then(function(){
+        // Backfill for a checklist signed off before 2026-09-22 (see
+        // syncJoineryStatusFromChecklist's own comment) -- harmless, instant
+        // no-op for every other checklist (unsigned, or already synced).
+        syncJoineryStatusFromChecklist(data, state.levelName, state.roomName, state.currentJoineryNo);
+      });
     }).catch(function(err){
       console.error("Open joinery item failed:", err);
       showToast("Couldn't open that item — try again.");

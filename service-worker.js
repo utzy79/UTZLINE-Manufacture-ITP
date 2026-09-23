@@ -79,8 +79,25 @@
 // backfill case, where a checklist signed off before this feature existed
 // picks up its status the moment it's next opened with no edit at all.
 // Full cross-app regression suite re-run clean afterward.
+//
+// v4, 2026-09-23 (same day): two more pipeline stages (Andrew, on UTZLINE
+// Projects' Joinery Register). Opening this app's own checklist at all --
+// signed or not -- now forward-advances the shared status to
+// "in_manufacture" (new: a factory worker has started this item); a fully
+// signed checklist still advances to "manufactured" exactly as before,
+// which UTZLINE Projects' Register now displays as "Ready to dispatch"
+// (Andrew confirmed this stage is "already there and comes from the
+// manufacture itp being completed" -- only its label changed, not its
+// trigger). A third new stage, "delivered", is reserved in the shared rank
+// table for a future Delivery ITP app -- this app writes neither it nor
+// anything past its own "manufactured". Every forward transition this app
+// writes now also appends a {status, at, by} entry to the record's own
+// `history` array (attributed to the real device identity when one's set,
+// falling back to the app name as before), backfilling one entry for a
+// record saved before that field existed -- feeds the Register's own
+// status-history hover.
 var ICON_VERSION = "v1";
-var CACHE_NAME = "utzline-manufacture-itp-cache-v4";
+var CACHE_NAME = "utzline-manufacture-itp-cache-v5";
 
 var PRECACHE_URLS = [
   "./",
