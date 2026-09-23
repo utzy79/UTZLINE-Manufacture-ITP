@@ -1,8 +1,36 @@
 # UTZLINE Manufacture ITP — installable app
 
-**Current version: v3** (its own independent version line, separate from
-Site Measure/Viewer's and from Install ITP's — bump this line every time
-a new build ships.)
+**Current version: v7** (its own independent version line, separate from
+Site Measure/Viewer's and from Install ITP's — bump this line, and add a
+dated entry below, every time a new build ships. See
+`next-version-notes.md` in the project for the full per-version changelog
+if a gap ever needs filling in.)
+
+**v7 (2026-09-23):** Andrew, verbatim: *"implement the username as per
+the delivery itp throughout the entire system, but instead of it opening
+a popup, the button is the selector, when you pick a name it opens a
+numberpad to input the pin (4 digit pin)."* Replaces the old "Set your
+name" button + single freeform-text prompt (no PIN at all) with the
+shared name+PIN identity pattern ported verbatim from Delivery ITP's own
+reference implementation: the Projects-screen `identitySelector`
+`<select>` **is** the button — its own native dropdown lists every known
+name plus "+ Add a new name…" — and picking a name immediately opens an
+on-screen numberpad (never a text field) to enter/verify its 4-digit
+PIN. Adding a brand-new name still types the name as plain text, then
+chooses and confirms a PIN via two numberpad rounds, then ticks which
+apps to list it in ("show me in", `ManufactureITP` pre-checked). Reads
+and writes the same shared `<Projects folder>/utzline-users.csv`
+registry every app in the family now uses (see "Where things are saved"
+below) — a name added from any UTZLINE app shows up in all of them. The
+underlying per-device `utzline-identity` IndexedDB mechanism
+(`getDeviceUserName`/`setDeviceUserName`) is unchanged; only what
+triggers it on this screen changed.
+
+**v4–v6 (2026-09-23):** three small releases updating this app's own
+level-list exclusion to also skip the new `itp-delivery` folder (UTZLINE
+Delivery ITP's own project-wide data folder), so it's never mistaken for
+a Level anywhere in this app. No other functional change in v4–v6 — see
+`next-version-notes.md` for the exact detail of each.
 
 **v3 (2026-09-23):** mirrors Install ITP v10. Checklist sign-off now auto-advances the shared `joinery-status.json` record (project root, works in both flat and legacy projects) to "manufactured" the moment both signoff fields are filled in, forward-only, with backfill for a checklist signed off before this existed. The shared status badge (📏/📦/🏆) now renders on this app's own Level Plan markers too, alongside the existing per-item ✓/✕ indicator. Also adds a read-only "View job note" button to the checklist screen, listing PDFs Site Measure/Viewer have attached to that joinery item.
 
@@ -28,8 +56,9 @@ matches how they're actually used.
 scratch: same `index.html`-as-the-whole-app structure (~1400 lines,
 markup/styles/logic together), same `manifest.json`/`service-worker.js`
 installability pattern, same Projects-folder browsing, same shared
-device-identity ("Set your name") and signature-pad/PDF-export
-machinery. What's different is the checklist content itself (Andrew's
+device-identity (the name+PIN selector, see "Where things are saved"
+below) and signature-pad/PDF-export machinery. What's different is the
+checklist content itself (Andrew's
 own Metro Joinery **"PRE DELIVERY – CHECKLIST"** template, 17 rows, in
 place of the 16-row install checklist), the two sign-off roles
 ("Joinery Builder" and "Metro Factory / Workshop Supervisor" in place of
@@ -78,6 +107,19 @@ saved" below).
    exports for the same item is kept.
 
 ## Where things are saved
+
+**Name+PIN identity registry (added v7, 2026-09-23):** `<Projects
+folder>/utzline-users.csv` — a single shared file at the **Projects-root
+level** (a sibling of every individual Project folder, not inside one).
+The SAME file every app in the UTZLINE family reads/writes, so a name
+added from any app shows up in all of them. Header row
+`Name,PIN,ShowInApps`; picking a name on the Projects screen's
+`identitySelector` opens an on-screen numberpad to verify its 4-digit
+PIN, or "+ Add a new name…" prompts for a name, a PIN (chosen and
+confirmed via two numberpad rounds), and which apps to list it in
+(`ManufactureITP` pre-checked here). See Delivery ITP's own README for
+the full registry documentation (file format, lost-PIN recovery, etc.)
+— this app reads/writes the exact same file with the exact same rules.
 
 **LEGACY (folder-based) project:**
 
@@ -134,24 +176,22 @@ moment it exists, even before its checklist has been touched.
 
 ## Getting this installed as its own app
 
-Same pattern as the Viewer and Install ITP: a subfolder of the same
-GitHub Pages site the rest of the family already lives on, so all the
-apps install as separate, independent apps from one repo:
+**This app lives in its own separate GitHub repository** — not a
+subfolder of Site Measure's, the Viewer's, or any sibling app's repo.
+Every app in the UTZLINE family (Site Measure, Viewer, Install ITP,
+Manufacture ITP, UTZLINE Projects, UTZLINE Scheduler, UTZLINE Delivery
+ITP) is its own repo with its own GitHub Pages URL.
 
-1. In the `UTZLINE-Site-Measure` repo, add everything from this folder
-   under a
-   [`manufacture-itp/`](https://github.com/utzy79/UTZLINE-Site-Measure/tree/main/manufacture-itp)
-   subfolder — so it ends up live at
-   [`https://utzy79.github.io/UTZLINE-Site-Measure/manufacture-itp/`](https://utzy79.github.io/UTZLINE-Site-Measure/manufacture-itp/).
-   Keep the `icons/` folder structure intact.
+1. In this app's own repo, add every file from this bundle at the repo
+   **root** (not inside a subfolder) — keep the `icons/` folder
+   structure intact. It'll go live at that repo's own GitHub Pages URL.
 2. Open that URL once in a normal browser tab while online, so the
    service worker can cache it for offline use.
 3. Install it: Chrome/Edge's install icon in the address bar ("Install
-   this site as an app") while on the `manufacture-itp/` URL
-   specifically. Because it has its own `manifest.json` (its own name
-   and icons — purple, to tell it apart from Install ITP's green, Site
-   Measure's orange, and the Viewer's blue), Chrome and Windows/Android
-   treat it as a wholly separate, independently installable app.
+   this site as an app"). Because it has its own `manifest.json` (its
+   own name and icons — purple, to tell it apart from every sibling
+   app's own colour), Chrome and Windows/Android treat it as a wholly
+   separate, independently installable app.
 4. On a phone or tablet, or on a factory-floor computer — the main way
    this one's meant to be used — "Install this site as an app" is under
    the browser's own menu (Chrome: ⋮ → "Add to Home screen" / "Install
@@ -159,14 +199,15 @@ apps install as separate, independent apps from one repo:
 
 ## Updating this app
 
-Same process as the other apps: unzip whatever's shared in chat, upload
-the files into this app's own `manufacture-itp/` folder in the repo
-(overwriting existing ones, keeping `icons/` intact), commit, wait for
-GitHub Pages to redeploy, then close and reopen the installed app to
-pick up the change. Bump `service-worker.js`'s `CACHE_NAME` (and the
-version note at the top of that file) with every change that ships,
-same convention as the other apps, so installed copies actually pick up
-the update instead of serving a stale cached copy forever.
+Same process every time a new build ships: unzip whatever's shared in
+chat, upload the files into this app's own repo root (overwriting
+existing ones, keeping `icons/` intact), commit, wait for GitHub Pages
+to redeploy, then close and reopen the installed app to pick up the
+change. **Bump the "Current version" line at the top of this README
+(with a dated changelog entry) and `service-worker.js`'s `CACHE_NAME`
+every single time a change ships** — both need to move together, or
+installed copies keep serving a stale cached build and this README
+stops being a reliable record of what's actually live.
 
 ## Things worth knowing
 
