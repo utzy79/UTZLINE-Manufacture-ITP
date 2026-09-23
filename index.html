@@ -274,6 +274,16 @@ textarea.notes-box{
   cursor:pointer; display:flex; align-items:center; justify-content:center;
 }
 
+/* ---- machined gate banner (2026-09-23) -- see joineryStatusRank's own
+   comment. Deliberately small and plain, not a whole new UI section --
+   Andrew asked for this app to otherwise stay as-is. ---- */
+.machined-banner{
+  display:flex; align-items:center; gap:8px; font-size:13px; line-height:1.4;
+  padding:10px 12px; margin-bottom:10px; border-radius:9px;
+  border:1px solid var(--danger); color:var(--danger);
+}
+.machined-banner[hidden]{ display:none; }
+
 /* ---- sign-off ---- */
 .signoff-block{
   border:1px solid var(--border-strong); border-radius:9px; padding:12px;
@@ -556,6 +566,10 @@ body.plan-fullscreen .plan-viewport{
     <textarea class="notes-box" id="notesEl" placeholder="Anything not covered above — missing parts, follow-up needed, etc."></textarea>
 
     <h2 style="font-size:14px; text-transform:uppercase; letter-spacing:.04em; color:var(--text-secondary); margin-top:18px;">Sign-off / Approval</h2>
+    <!-- New (2026-09-23) -- see joineryStatusRank's own comment. Unobtrusive
+         heads-up shown/hidden by refreshMachinedBanner, so an operator isn't
+         surprised only at the moment they try to sign. -->
+    <div class="machined-banner" id="notMachinedBanner" hidden>⚙️ Not yet marked Machined — sign-off will be blocked until this item is marked Machined in the Machine Schedule app.</div>
     <div class="signoff-block" data-role="builder">
       <div class="so-role">Joinery Builder</div>
       <div class="so-row">
@@ -616,6 +630,19 @@ body.plan-fullscreen .plan-viewport{
     <div class="modal-actions">
       <button class="mbtn" id="confirmCancel">Cancel</button>
       <button class="mbtn mbtn-danger" id="confirmOk">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- "Not yet machined" sign-off block (2026-09-23) -- see
+     joineryStatusRank's own comment. Shown the moment a sign-off stroke
+     would otherwise complete this checklist's signatures, for an item that
+     hasn't reached "machined" in joinery-status.json yet. -->
+<div class="modal-backdrop" id="notMachinedBackdrop" hidden>
+  <div class="modal-box" role="alertdialog" aria-modal="true" aria-labelledby="notMachinedMsg">
+    <p id="notMachinedMsg">This item hasn't been marked Machined yet. Use the Machine Schedule app to mark it Machined before signing off manufacturing.</p>
+    <div class="modal-actions">
+      <button class="mbtn mbtn-accent" id="notMachinedOk">Got it</button>
     </div>
   </div>
 </div>
@@ -957,11 +984,27 @@ body.plan-fullscreen .plan-viewport{
   // display LABEL in UTZLINE Projects' Joinery Register changed ("Ready to
   // dispatch") -- this app still only ever writes "manufactured" on its own
   // sign-off, exactly as before.
+  // SPLIT AGAIN, same day (2026-09-23, Andrew): "Manufacture status needs to
+  // be split up into 2 parts. We need a machined and a manufactured tab.
+  // All traceable by user name. Machined to have its own app. Called
+  // machine schedule. This is where the machinist can mark off a joinery
+  // item as complete. It will add their name and date time to the system."
+  // New stage "machined" (rank 3) slots in between "in_manufacture" and
+  // "manufactured", which both shift up one; "delivered"/"installed" shift
+  // up to match. This app never writes "machined" itself -- that's set
+  // exclusively by the new sibling app, UTZLINE Machine Schedule, straight
+  // into this same shared joinery-status.json via the same
+  // setJoineryStatusForward funnel -- it only READS it here, as the new
+  // precondition on its own sign-off flow (see syncJoineryStatusFromChecklist
+  // and the signature pads' own onStroke handlers further down: Andrew
+  // confirmed this app's checklist can't be signed off as "manufactured"
+  // until the item has ALREADY reached "machined").
   function joineryStatusRank(status){
     switch (status){
-      case "installed": return 5;
-      case "delivered": return 4;
-      case "manufactured": return 3;
+      case "installed": return 6;
+      case "delivered": return 5;
+      case "manufactured": return 4;
+      case "machined": return 3;
       case "in_manufacture": return 2;
       case "measured": return 1;
       default: return 0;
@@ -972,19 +1015,21 @@ body.plan-fullscreen .plan-viewport{
       case "installed": return "🏆";
       case "delivered": return "🚚";
       case "manufactured": return "📦";
+      case "machined": return "⚙️";
       case "in_manufacture": return "🏭";
       case "measured": return "📏";
       default: return "";
     }
   }
   // Mirrors source.html's own joineryDisplayIcon exactly -- see its comment
-  // for the priority ordering (installed/delivered/ready-to-dispatch/in-
-  // manufacture beat a job note, which beats a bare "measured").
+  // for the priority ordering (installed/delivered/ready-to-dispatch/
+  // machined/in-manufacture beat a job note, which beats a bare "measured").
   function joineryDisplayIcon(rec){
     if (!rec) return "";
     if (rec.status === "installed") return "🏆";
     if (rec.status === "delivered") return "🚚";
     if (rec.status === "manufactured") return "📦";
+    if (rec.status === "machined") return "⚙️";
     if (rec.status === "in_manufacture") return "🏭";
     if (rec.jobNote) return "🛠️";
     if (rec.status === "measured") return "📏";
@@ -1053,13 +1098,43 @@ body.plan-fullscreen .plan-viewport{
   // when the checklist isn't (yet) fully signed.
   function syncJoineryStatusFromChecklist(data, level, room, joineryId){
     if (!data || !checklistProgress(data).signed) return Promise.resolve(null);
-    // Prefers the real signed-in device identity (2026-09-23, so the
-    // Register's own status-history hover shows an actual person rather
-    // than just the app's name whenever one's known) -- falls back to the
-    // app name exactly as before when no device identity has been set.
-    return setJoineryStatusForward(state.projectHandle, level, room, joineryId, "manufactured", deviceUserName || "Manufacture ITP").catch(function(err){
+    // New (2026-09-23) -- see joineryStatusRank's own comment on today's
+    // machined/manufactured split. This app's own sign-off (both
+    // signatures, no row flagged "No") is no longer enough on its own to
+    // advance to "manufactured": the item must have ALREADY reached
+    // "machined" (set exclusively by the new sibling app, UTZLINE Machine
+    // Schedule) first. The signature pads' own onStroke handlers (see
+    // setupSignaturePad's callers below) already block the sign action
+    // itself, before `signed` can ever become true, for an item that isn't
+    // machined yet -- this re-checks the live status here too, as a
+    // defense-in-depth backstop that also covers the backfill call below in
+    // openItem (a checklist that reads signed=true because it was already
+    // fully signed off before this gate ever existed still can't
+    // auto-advance past an item nobody has actually marked machined).
+    return readJoineryStatuses(state.projectHandle).then(function(list){
+      var rec = findJoineryStatus(list, level, room, joineryId);
+      var rank = rec ? joineryStatusRank(rec.status) : 0;
+      if (rank < joineryStatusRank("machined")) return null;
+      // Prefers the real signed-in device identity (2026-09-23, so the
+      // Register's own status-history hover shows an actual person rather
+      // than just the app's name whenever one's known) -- falls back to the
+      // app name exactly as before when no device identity has been set.
+      return setJoineryStatusForward(state.projectHandle, level, room, joineryId, "manufactured", deviceUserName || "Manufacture ITP");
+    }).catch(function(err){
       console.error("Syncing joinery status failed:", err);
       return null;
+    });
+  }
+  // New (2026-09-23) -- see joineryStatusRank's own comment. Reads this
+  // exact item's live status rank from joinery-status.json fresh every time
+  // it's asked (never cached), since the whole point of the gate below is
+  // catching a machinist marking "machined" in the sibling Machine Schedule
+  // app at any point, including while this checklist happens to already be
+  // open on this device.
+  function currentItemStatusRank(){
+    return readJoineryStatuses(state.projectHandle).then(function(list){
+      var rec = findJoineryStatus(list, state.levelName, state.roomName, state.currentJoineryNo);
+      return rec ? joineryStatusRank(rec.status) : 0;
     });
   }
   // New (2026-09-23, Andrew: "ready to dispatch...comes from the
@@ -2863,6 +2938,25 @@ body.plan-fullscreen .plan-viewport{
         if (!already) btn.classList.add("selected");
         if (state.currentData) state.currentData.rows[i].status = newStatus;
         markDirty();
+        // New (2026-09-23) -- see joineryStatusRank's own comment. Both
+        // signature pads can already be inked from before this exact click
+        // (e.g. fixing the last row flagged "No" to "Yes" while both
+        // signatures were already drawn) -- that's a second, legitimate way
+        // this checklist's own `signed` can flip to true besides a
+        // signature stroke (see the pads' own onStroke handlers, which
+        // handle the more common case). Unlike a stroke, there's nothing
+        // sensible to revert here (the Yes/No/N/A answer itself is real
+        // data), so this only surfaces the same message and banner --
+        // syncJoineryStatusFromChecklist's own machined check is what
+        // actually withholds the "manufactured" write either way.
+        if (state.currentData && checklistProgress(state.currentData).signed){
+          currentItemStatusRank().then(function(rank){
+            if (rank < joineryStatusRank("machined")){
+              refreshMachinedBanner();
+              showNotMachinedBlock();
+            }
+          });
+        }
       });
     });
     commentInput.addEventListener("input", function(){
@@ -2881,8 +2975,49 @@ body.plan-fullscreen .plan-viewport{
     var hint = block.querySelector(".sig-pad-empty-hint");
     var clearBtn = block.querySelector(".sig-clear-btn");
     var pad = setupSignaturePad(canvas, hint);
+    // New (2026-09-23) -- see joineryStatusRank's own comment. A stroke that
+    // would leave BOTH signature pads inked, with no row flagged "No", is
+    // the sign action itself (this checklist has no separate "Sign"/
+    // "Complete" button -- checklistProgress's own `signed` is derived
+    // straight from the two pads plus the rows, so finishing the second
+    // signature IS what signs it off). Gated right here, before that stroke
+    // is ever written into state.currentData, so `signed` can never become
+    // true for an item that hasn't reached "machined" yet -- syncJoinery
+    // StatusFromChecklist (the only thing that ever reads `signed` to write
+    // "manufactured") never even sees a signed checklist to act on in this
+    // case. A block reverts just this one stroke (pad.clear() + sig back to
+    // null) rather than silently dropping it, so the operator sees exactly
+    // what happened and can draw again once the item's actually machined.
     pad.onStroke = function(){
-      if (state.currentData) state.currentData.signoff[role].sig = pad.toDataURL();
+      if (!state.currentData) return;
+      var newSig = pad.toDataURL();
+      var otherRole = role === "builder" ? "supervisor" : "builder";
+      var wouldCompleteSignOff = !!(newSig && state.currentData.signoff[otherRole].sig && !checklistHasNoAnswer(state.currentData));
+      if (wouldCompleteSignOff){
+        currentItemStatusRank().then(function(rank){
+          if (rank < joineryStatusRank("machined")){
+            pad.clear();
+            if (state.currentData) state.currentData.signoff[role].sig = null;
+            refreshMachinedBanner();
+            showNotMachinedBlock();
+            return;
+          }
+          if (state.currentData){
+            state.currentData.signoff[role].sig = newSig;
+            markDirty();
+          }
+        }).catch(function(err){
+          // Can't confirm the gate (e.g. no project handle) -- fail closed,
+          // same as every other read failure in this ecosystem defaulting
+          // an unknown status to "not yet reached".
+          console.error("Machined-gate check failed:", err);
+          pad.clear();
+          if (state.currentData) state.currentData.signoff[role].sig = null;
+          showNotMachinedBlock();
+        });
+        return;
+      }
+      state.currentData.signoff[role].sig = newSig;
       markDirty();
     };
     nameInput.addEventListener("input", function(){
@@ -2908,6 +3043,25 @@ body.plan-fullscreen .plan-viewport{
     });
     signaturePads[role] = { pad: pad, nameInput: nameInput, dateInput: dateInput };
   });
+
+  /* ---- machined gate (2026-09-23) -- see joineryStatusRank's own comment
+     and the signature pads' own onStroke handlers just above, which are
+     the actual gate. This banner is just the friendly heads-up so an
+     operator isn't surprised only at the moment they try to sign. ---- */
+  var notMachinedBanner = document.getElementById("notMachinedBanner");
+  var notMachinedBackdrop = document.getElementById("notMachinedBackdrop");
+  var notMachinedOk = document.getElementById("notMachinedOk");
+  notMachinedOk.addEventListener("click", function(){ notMachinedBackdrop.hidden = true; });
+  function showNotMachinedBlock(){
+    notMachinedBackdrop.hidden = false;
+  }
+  function refreshMachinedBanner(){
+    return currentItemStatusRank().then(function(rank){
+      notMachinedBanner.hidden = rank >= joineryStatusRank("machined");
+    }).catch(function(err){
+      console.error("Refreshing machined banner failed:", err);
+    });
+  }
 
   notesEl.addEventListener("input", function(){
     if (state.currentData) state.currentData.notes = notesEl.value;
@@ -3067,6 +3221,12 @@ body.plan-fullscreen .plan-viewport{
       // them has to happen only once the screen is actually laid out.
       showScreen("Checklist");
       renderChecklistIntoScreen(data);
+      // New (2026-09-23) -- see joineryStatusRank's own comment. Independent
+      // of the in_manufacture/backfill writes just below (this only READS
+      // joinery-status.json, so there's no write-clobber risk the way those
+      // two chained writes have) -- just refreshes the banner for whatever
+      // this item's live status actually is right now.
+      refreshMachinedBanner();
       // New (2026-09-23): opening this item's checklist at all -- signed or
       // not -- is itself the "in manufacture" event (a factory worker has
       // started on it). Forward-only, so this is a harmless no-op for an

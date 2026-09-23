@@ -108,8 +108,42 @@
 // export-time) alongside its existing `addedAt`. A photo added before this
 // release has no addedBy on file and simply shows its date/time alone,
 // never a blank or "undefined" name.
+//
+// v9, 2026-09-23 (same day): Andrew, verbatim: "Manufacture status needs to
+// be split up into 2 parts. We need a machined and a manufactured tab. All
+// traceable by user name. Machined to have its own app. Called machine
+// schedule. This is where the machinist can mark off a joinery item as
+// complete. It will add their name and date time to the system." The shared
+// joinery-status.json pipeline gains a new stage, "machined" (rank 3,
+// between "in_manufacture" and "manufactured", which -- along with
+// "delivered"/"installed" -- all shift up one rank to make room). This app
+// never writes "machined" itself; that's set exclusively by the new sibling
+// app, UTZLINE Machine Schedule, straight into the same shared file. What
+// THIS app gets is a new, real, user-facing precondition on its own
+// sign-off: the checklist can no longer be signed off as "manufactured"
+// until the item has ALREADY reached "machined". Enforced right at the sign
+// action itself -- the signature pads' own onStroke handlers block and
+// revert the exact stroke that would otherwise complete both signatures
+// (and the checklist rows' own tri-state buttons show the same message if
+// fixing the last row flagged "No" is what would complete it instead),
+// showing a clear on-screen "This item hasn't been marked Machined yet..."
+// message pointing at the new app -- plus a defense-in-depth re-check
+// inside syncJoineryStatusFromChecklist itself (the only place that ever
+// writes "manufactured"), so even the pre-existing-signed-checklist
+// backfill path on open can't slip past it. A small, unobtrusive
+// "⚙️ Not yet marked Machined" banner shows on the checklist screen itself
+// whenever this applies, so an operator isn't surprised only at the moment
+// they try to sign -- no other new UI, no new tab/section, per Andrew's own
+// "otherwise stay as-is" for this app. syncInManufactureOnOpen and the
+// "in_manufacture" write it makes on every checklist open are UNCHANGED.
+// New regression test run_manufacture_itp_machined_gate.js covers both the
+// block (not yet machined) and the success path (already machined) through
+// the real checklist screen; run_manufacture_itp_no_answer_gating_and_
+// photos.js and run_manufacture_itp_status_signoff.js both updated to seed
+// a "machined" record ahead of their own sign-off flows, an expected
+// consequence of this gate rather than a regression.
 var ICON_VERSION = "v1";
-var CACHE_NAME = "utzline-manufacture-itp-cache-v8";
+var CACHE_NAME = "utzline-manufacture-itp-cache-v9";
 
 var PRECACHE_URLS = [
   "./",
