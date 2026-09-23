@@ -96,8 +96,20 @@
 // falling back to the app name as before), backfilling one entry for a
 // record saved before that field existed -- feeds the Register's own
 // status-history hover.
+//
+// v8, 2026-09-23: Andrew, verbatim, on the exported PDF's photos: "change
+// it from a3 to a4 portrait. All collated nicely per page. All to be date
+// and time stamped with users name also." The trailing photo-grid page(s)
+// (previously A3 landscape, 3x2) are now A4 portrait, 2x3, matching the
+// rest of the document's own page size for the first time -- each photo
+// now shows a date/time + uploader-name caption underneath it
+// (formatPdfImageStamp), sourced from a new `addedBy` field stamped onto a
+// photo the moment it's added (deviceUserName at add-time, not
+// export-time) alongside its existing `addedAt`. A photo added before this
+// release has no addedBy on file and simply shows its date/time alone,
+// never a blank or "undefined" name.
 var ICON_VERSION = "v1";
-var CACHE_NAME = "utzline-manufacture-itp-cache-v7";
+var CACHE_NAME = "utzline-manufacture-itp-cache-v8";
 
 var PRECACHE_URLS = [
   "./",

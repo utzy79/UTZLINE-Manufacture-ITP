@@ -1,10 +1,12 @@
 # UTZLINE Manufacture ITP — installable app
 
-**Current version: v7** (its own independent version line, separate from
+**Current version: v8** (its own independent version line, separate from
 Site Measure/Viewer's and from Install ITP's — bump this line, and add a
 dated entry below, every time a new build ships. See
 `next-version-notes.md` in the project for the full per-version changelog
 if a gap ever needs filling in.)
+
+**v8 (2026-09-23):** Andrew, verbatim, on the exported PDF's photos: "change it from a3 to a4 portrait. All collated nicely per page. All to be date and time stamped with users name also." The trailing photo pages (previously one or more A3 landscape pages, 3 columns × 2 rows) are now **A4 portrait**, 2 columns × 3 rows — same 6-per-page count, reflowed for the narrower shape, matching this document's own page size for the first time. Each photo now shows a **date/time + uploader-name caption** underneath it, from a new `addedBy` field stamped onto the photo record the moment it's added (whoever's signed in on this device, via the identity system already shipped in v7 above) alongside its existing `addedAt`. A photo added before this release has no `addedBy` and simply shows its date/time alone, never a blank or "undefined" name. `run_manufacture_itp_no_answer_gating_and_photos.js` (`pdftest-projects/`) updated the same way as Install ITP's own equivalent test — spies on jsPDF's `addPage` calls (wrapping the constructor itself, since `addPage` lives only on each constructed instance in this jsPDF build, not on `.API` or `.prototype`) to confirm the export now calls `addPage("a4","portrait")` for the photo grid and never `"a3"`. `service-worker.js` cache bumped to `utzline-manufacture-itp-cache-v8`.
 
 **v7 (2026-09-23):** Andrew, verbatim: *"implement the username as per
 the delivery itp throughout the entire system, but instead of it opening

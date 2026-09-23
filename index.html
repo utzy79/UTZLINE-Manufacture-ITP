@@ -2979,7 +2979,7 @@ body.plan-fullscreen .plan-viewport{
       var added = 0;
       results.forEach(function(r){
         if (!r) return;
-        state.currentData.photos.push({ dataUrl: r.dataUrl, w: r.w, h: r.h, addedAt: new Date().toISOString() });
+        state.currentData.photos.push({ dataUrl: r.dataUrl, w: r.w, h: r.h, addedAt: new Date().toISOString(), addedBy: deviceUserName || "" });
         added++;
       });
       if (added){
@@ -3161,6 +3161,23 @@ body.plan-fullscreen .plan-viewport{
   /* ============================== PDF export ============================== */
   function wrapText(doc, text, maxWidth){
     return doc.splitTextToSize(text || "", maxWidth);
+  }
+  // "All to be date and time stamped with users name also" (Andrew,
+  // 2026-09-23, on the photo/pin-drop/snapshot pages) -- one shared caption
+  // formatter for every stamped image in a PDF export: date+time from an
+  // ISO string, plus " — <name>" when an attribution name is available.
+  // Either half can be missing (an older photo saved before addedBy existed
+  // has no name; a malformed/missing date is dropped rather than shown as
+  // "Invalid Date") without the other collapsing.
+  function formatPdfImageStamp(iso, by){
+    var stamp = "";
+    var d = iso ? new Date(iso) : null;
+    if (d && !isNaN(d.getTime())){
+      stamp = d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) +
+        ", " + d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+    }
+    if (by) stamp = stamp ? (stamp + " — " + by) : by;
+    return stamp;
   }
   function exportChecklistPdf(){
     if (!window.jspdf || !window.jspdf.jsPDF){
@@ -3375,26 +3392,35 @@ body.plan-fullscreen .plan-viewport{
 
     // ---- photos, appended at the very end (2026-09-23, Andrew: "This will
     // attach them at the very end of each specific ITP (scaled down to fit
-    // multiple on an a3 page)") -- one or more extra A3 landscape pages
-    // (bigger than the rest of this A4 document, specifically so more than
-    // one or two photos don't each need a whole page) with the photos laid
-    // out in a grid, each scaled to fit its own cell while keeping its
-    // aspect ratio. Runs BEFORE stampLogosOnEveryPage below so these pages
-    // get the same top-of-page logos as every other page.
+    // multiple on an a3 page)") -- originally one or more extra A3 landscape
+    // pages; changed to A4 PORTRAIT the same day per Andrew's follow-up,
+    // verbatim: "when the photos, pin drops, snapshots are added to the itp
+    // pages, change it from a3 to a4 portrait. All collated nicely per page.
+    // All to be date and time stamped with users name also." Now matches
+    // this document's own page size/orientation throughout (previously only
+    // the trailing photo pages were the odd one out). 2 columns x 3 rows
+    // keeps the same 6-per-page count the old A3 landscape 3x2 grid had,
+    // reflowed for the narrower portrait shape, with room reserved under
+    // each photo for its date/time + name caption (formatPdfImageStamp,
+    // above) -- an older photo saved before addedBy existed shows just the
+    // date/time, never a blank or "undefined" name. Runs BEFORE
+    // stampLogosOnEveryPage below so these pages get the same top-of-page
+    // logos as every other page.
     if (data.photos && data.photos.length){
-      var PHOTO_COLS = 3, PHOTO_ROWS = 2, perPhotoPage = PHOTO_COLS * PHOTO_ROWS;
+      var PHOTO_COLS = 2, PHOTO_ROWS = 3, perPhotoPage = PHOTO_COLS * PHOTO_ROWS;
+      var PHOTO_CAPTION_H = 13;
       for (var photoStart = 0; photoStart < data.photos.length; photoStart += perPhotoPage){
-        doc.addPage("a3", "landscape");
-        var a3W = doc.internal.pageSize.getWidth(), a3H = doc.internal.pageSize.getHeight();
+        doc.addPage("a4", "portrait");
+        var gridPageW = doc.internal.pageSize.getWidth(), gridPageH = doc.internal.pageSize.getHeight();
         var gridTop = topContentY;
         doc.setFont("helvetica", "bold").setFontSize(12).setTextColor(20);
         doc.text("PHOTOS", margin, gridTop - 10);
-        var gridW = a3W - margin * 2, gridH = a3H - gridTop - margin;
+        var gridW = gridPageW - margin * 2, gridH = gridPageH - gridTop - margin;
         var cellW = gridW / PHOTO_COLS, cellH = gridH / PHOTO_ROWS, cellPad = 10;
         data.photos.slice(photoStart, photoStart + perPhotoPage).forEach(function(photo, idx){
           var col = idx % PHOTO_COLS, prow = Math.floor(idx / PHOTO_COLS);
           var cx = margin + col * cellW + cellPad, cy = gridTop + prow * cellH + cellPad;
-          var cw = cellW - cellPad * 2, ch = cellH - cellPad * 2;
+          var cw = cellW - cellPad * 2, ch = cellH - cellPad * 2 - PHOTO_CAPTION_H;
           var pw = photo.w || 1, ph = photo.h || 1;
           var scale = Math.min(cw / pw, ch / ph);
           var iw = pw * scale, ih = ph * scale;
@@ -3403,6 +3429,12 @@ body.plan-fullscreen .plan-viewport{
             doc.addImage(photo.dataUrl, "JPEG", ix, iy, iw, ih, undefined, "FAST");
             doc.setDrawColor(190).setLineWidth(0.75).rect(ix, iy, iw, ih);
           }catch(e){ console.error("Photo failed to draw in PDF:", e); }
+          var stampText = formatPdfImageStamp(photo.addedAt, photo.addedBy);
+          if (stampText){
+            doc.setFont("helvetica", "normal").setFontSize(7.5).setTextColor(110);
+            doc.text(stampText, cx + cw / 2, cy + ch + PHOTO_CAPTION_H - 2, { align: "center" });
+            doc.setTextColor(20);
+          }
         });
       }
     }
