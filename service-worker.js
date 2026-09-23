@@ -80,7 +80,7 @@
 // picks up its status the moment it's next opened with no edit at all.
 // Full cross-app regression suite re-run clean afterward.
 var ICON_VERSION = "v1";
-var CACHE_NAME = "utzline-manufacture-itp-cache-v3";
+var CACHE_NAME = "utzline-manufacture-itp-cache-v4";
 
 var PRECACHE_URLS = [
   "./",
