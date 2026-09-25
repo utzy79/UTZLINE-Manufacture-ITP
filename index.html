@@ -2283,6 +2283,16 @@ body.plan-fullscreen .plan-viewport{
   function checklistHasNoAnswer(data){
     return !!(data && Array.isArray(data.rows) && data.rows.some(function(r){ return r && r.status === "no"; }));
   }
+  // Same "signed off" definition computeItemItpStatus below already uses
+  // for this item's own marker/summary badge (both signatures present, no
+  // row flagged "No") -- factored out here (2026-09-24) so flushPendingSave's
+  // new auto-export-on-sign-off hook (see its own comment) can share it
+  // rather than duplicating the formula a third time.
+  function isChecklistSignedOff(data){
+    return !!(data && data.signoff &&
+      data.signoff.builder && data.signoff.builder.sig &&
+      data.signoff.supervisor && data.signoff.supervisor.sig) && !checklistHasNoAnswer(data);
+  }
   // Status for a single joinery item's own marker -- complete only once
   // THAT item's own checklist file has both sign-off signatures AND no row
   // is flagged "No"; not started yet (no file), partially filled, or
@@ -3310,6 +3320,26 @@ body.plan-fullscreen .plan-viewport{
       // syncJoineryStatusFromChecklist's own comment) -- never blocks the
       // save itself finishing on this extra write.
       syncJoineryStatusFromChecklist(savedData, savedLevel, savedRoom, savedJoinery);
+      // Auto-export a PDF the moment this checklist reaches "Signed off",
+      // and again on every later edit made while it's still signed off --
+      // Andrew, confirmed via a direct question during the 2026-09-24
+      // Joinery Item page overhaul, choosing this over "export on every
+      // save" specifically to keep the PDF folder from filling up with
+      // mid-progress exports. Reuses the exact same exportChecklistPdf()
+      // the manual "Export PDF" button already calls, so an auto-exported
+      // file lands in the identical folder/timestamped-filename convention.
+      // UNLIKE the fire-and-forget sync above, this IS returned/chained --
+      // exportChecklistPdf() reads live state.* rather than the savedData
+      // snapshot, and openItem() (the only place state.currentData is ever
+      // reassigned) already starts with flushPendingSave().then(...), so
+      // chaining this here is what keeps that guarantee true: nothing can
+      // swap the active checklist out from under this export before it
+      // finishes writing.
+      if (isChecklistSignedOff(savedData)){
+        return exportChecklistPdf().catch(function(err){
+          console.error("Auto-export on sign-off failed:", err);
+        });
+      }
     }).catch(function(err){
       console.error("Autosave failed:", err);
     });
