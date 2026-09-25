@@ -82,10 +82,18 @@
     every item in the whole project since the filename itself already
     carries the Level/Room/Item key.
 
-  A joinery item's checklist state autosaves shortly after any change
-  (debounced) and also saves immediately on the explicit Save button and
-  right before a PDF export, so leaving mid-edit or closing the tab loses
-  at most a few seconds of typing, never the item itself.
+  ---- Derived caches (2026-09-25, ported from Install ITP v26-v30) ----
+  - LEGACY: <ProjectsRoot>/<Project>/Manufacture ITP Index/<Level>.json and
+    <Level> - Badges.json; FLAT: the same two files under
+    <ProjectsRoot>/<Project>/Project Saves/UTZLINE ITP/Manufacture ITP Index/.
+    Per-level item-status index and status-badge cache -- purely derived,
+    never a source of truth (see the "item-status index cache" block below);
+    an empty or deleted one just means one cold rebuild.
+
+  A joinery item's checklist state is saved by the explicit "Save & exit"
+  button and on every leave path (the "Save changes before leaving?"
+  dialog, the phone back button, a tab close best-effort) -- autosave was
+  removed in v14 at Andrew's request.
 -->
 <title>UTZLINE Manufacture ITP</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -150,6 +158,16 @@
   --info-soft:#122a45;
 }
 *{box-sizing:border-box;}
+/* Andrew (2026-09-25): "is there a way to stop chrome from selecting the
+   text on the page. we just want to pan, zoom and load the menu buttons."
+   Nothing in this app's own chrome is meant to be selected -- a long press
+   on Android was highlighting labels/marker text and popping the copy
+   toolbar mid-pan. Text is selectable again only inside real text inputs.
+   (Ported from Install ITP v31/v33, 2026-09-25.) */
+body, button, h1, h2, h3, p, label, .list-row, .plan-marker, #levelPlanSvg, .modal-box{
+  -webkit-user-select:none; user-select:none; -webkit-touch-callout:none;
+}
+input, textarea, [contenteditable="true"]{ -webkit-user-select:text; user-select:text; -webkit-touch-callout:default; }
 html,body{margin:0; padding:0; height:100%;}
 body{
   font-family:'IBM Plex Sans',Arial,sans-serif;
@@ -192,6 +210,22 @@ p.hint{ font-size:13px; color:var(--text-secondary); margin:0 0 16px; line-heigh
 }
 .back-link:hover{ color:var(--text-primary); }
 .list{ display:flex; flex-direction:column; gap:8px; margin-bottom:14px; }
+/* Photo lightbox (2026-09-25, ported from Install ITP v34) */
+.photo-lightbox{ position:fixed; inset:0; z-index:60; background:rgba(0,0,0,.92); display:flex; align-items:center; justify-content:center; padding:16px; }
+.photo-lightbox[hidden]{ display:none; }
+.photo-lightbox img{ max-width:100%; max-height:100%; object-fit:contain; border-radius:8px; box-shadow:0 8px 40px rgba(0,0,0,.6); }
+.photo-lightbox-close{ position:absolute; top:14px; right:14px; }
+.photo-thumb img{ cursor:zoom-in; }
+/* Locked (signed-off) checklist -- see checklistLockedBanner. */
+.locked-banner{ background:var(--surface-2); border:1px solid var(--accent); color:var(--text-primary); border-radius:10px; padding:10px 12px; margin:8px 0 12px; font-weight:600; font-size:14px; }
+#screenChecklist.locked #checkRowsEl, #screenChecklist.locked .sig-pad-wrap, #screenChecklist.locked #addPhotoBtn,
+#screenChecklist.locked .photo-thumb-remove{ pointer-events:none; opacity:.7; }
+#screenChecklist.locked .photo-thumb-remove{ display:none; }
+@keyframes planPulse{ 0%{ r:30; opacity:1; } 100%{ r:110; opacity:0; } }
+.plan-pulse-ring{ animation: planPulse 0.8s ease-out 3; }
+/* Items list shown immediately on the way back from a checklist, dimmed
+   while it refreshes behind the save (2026-09-25, Install ITP round 3). */
+.list.refreshing{ opacity:.55; pointer-events:none; }
 .list-row{
   display:flex; align-items:center; gap:10px; width:100%;
   padding:12px 14px; border-radius:9px; border:1px solid var(--border-strong);
@@ -199,6 +233,13 @@ p.hint{ font-size:13px; color:var(--text-secondary); margin:0 0 16px; line-heigh
   font:inherit; font-size:14px; text-align:left;
 }
 .list-row:hover{ border-color:var(--accent); }
+/* Row action buttons (2026-09-25, Andrew: "instead of long press to goto
+   location, have buttons on the item (room / joinery item) goto location,
+   goto pin, open itp"). The row is a div now (buttons can't nest); tapping
+   the row itself still opens, the buttons are the explicit actions. */
+.list-row.has-actions{ flex-wrap:wrap; }
+.list-row .row-actions{ display:flex; gap:6px; flex-wrap:wrap; width:100%; margin-top:8px; }
+.list-row .row-actions .mbtn{ padding:7px 11px; font-size:12.5px; }
 .list-row .row-main{ flex:1; min-width:0; }
 .list-row .row-title{ font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .list-row .row-sub{ font-size:12px; color:var(--text-secondary); margin-top:2px; }
@@ -336,7 +377,12 @@ body.plan-fullscreen .plan-viewport{
   flex:1; min-height:0; height:auto; margin:8px 0 0; border-radius:0;
   border-left:none; border-right:none; border-bottom:none;
 }
-#levelPlanSvg{ width:100%; height:100%; display:block; cursor:grab; }
+#levelPlanSvg{ width:100%; height:100%; display:block; cursor:grab; touch-action:none; -webkit-tap-highlight-color:transparent; }
+#levelPlanSvg text{ pointer-events:none; }
+/* The plan image itself: never selectable, draggable, or long-pressable
+   into Chrome's image sheet. Pointer events go to the SVG (pan/zoom/tap). */
+#levelPlanSvg image{ pointer-events:none; -webkit-user-drag:none; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none; }
+img, svg, canvas{ -webkit-user-drag:none; -webkit-touch-callout:none; user-select:none; -webkit-user-select:none; }
 #levelPlanSvg:active{ cursor:grabbing; }
 .plan-marker{ cursor:pointer; }
 .plan-zoom-controls{
@@ -595,6 +641,10 @@ body.plan-fullscreen .plan-viewport{
     <button type="button" class="back-link" id="backToLevelsBtn">← All levels</button>
     <h2 id="roomsHeading"></h2>
     <p class="hint">Choose a room to see its joinery items.</p>
+    <!-- Andrew (2026-09-25): "when you open a level, instead of going to the
+         map, it should go to the room list" -- so the plan is reached from
+         here now (hidden for a level with no plan). -->
+    <div class="actions-row" id="roomsPlanRow" style="margin-bottom:10px;"><button class="mbtn mbtn-accent" id="roomsViewPlanBtn">🗺 Floor plan</button></div>
     <div class="list" id="roomListEl"></div>
   </div>
 
@@ -610,6 +660,11 @@ body.plan-fullscreen .plan-viewport{
   <!-- ---- Checklist screen ---- -->
   <div class="screen" id="screenChecklist">
     <button type="button" class="back-link" id="backToItemsBtn">← All joinery items in this room</button>
+    <!-- Andrew (2026-09-25): "once an itp is saved and exported (complete),
+         that itp page becomes locked (read only)". Shown, and every editable
+         control disabled, whenever the checklist on screen is signed off
+         (this app's own isChecklistSignedOff: both signatures, no "No"). -->
+    <div class="locked-banner" id="checklistLockedBanner" hidden>🔒 Signed off — this ITP is locked (read only). Its PDF has been created.</div>
 
     <div class="title-block">
       <div class="tb-head">PRE DELIVERY — CHECKLIST</div>
@@ -665,11 +720,21 @@ body.plan-fullscreen .plan-viewport{
       <input type="file" id="photoFileInput" accept="image/*" multiple style="display:none;">
     </div>
 
+    <!-- Andrew (2026-09-25): "save on the itp should be save and exit, no
+         need for export pdf or delete this item buttons, if an itp is
+         complete and saved, it then creates the pdf. this then has a pop up
+         that is return to room or return to floor plan or return to start."
+         The PDF is created automatically on the transition into Signed off
+         (see flushPendingSave); "View job note" stays (also on the plan's
+         marker menu now). Ported from Install ITP v31/v32. -->
     <div class="actions-row">
-      <button class="mbtn mbtn-accent" id="saveChecklistBtn">Save</button>
-      <button class="mbtn" id="exportPdfBtn">Export PDF</button>
+      <button class="mbtn mbtn-accent" id="saveChecklistBtn">Save &amp; exit</button>
+      <!-- Andrew (2026-09-25): "itp page needs a cancel / return to floor
+           plan option" -- leaves for the plan; an unsaved edit gets the
+           same Save & leave / Leave without saving / Cancel dialog the
+           Back link uses. -->
+      <button class="mbtn" id="returnToPlanBtn">Cancel / return to floor plan</button>
       <button class="mbtn" id="viewJobNoteBtn">View job note</button>
-      <button class="mbtn mbtn-danger" id="deleteItemBtn">Delete this item</button>
     </div>
   </div>
 
@@ -747,6 +812,19 @@ body.plan-fullscreen .plan-viewport{
   </div>
 </div>
 
+<!-- After "Save & exit" (2026-09-25) -- where to next. -->
+<div class="modal-backdrop" id="afterSaveBackdrop" hidden>
+  <div class="modal-box" role="dialog" aria-modal="true" style="max-width:320px; text-align:center;">
+    <p style="font-weight:700; margin-bottom:4px;" id="afterSaveTitle">Saved.</p>
+    <p class="hint" id="afterSaveHint" style="margin-bottom:14px;"></p>
+    <div class="modal-actions" style="flex-direction:column; gap:8px;">
+      <button class="mbtn mbtn-accent" id="afterSaveRoomBtn" style="width:100%;">Return to room</button>
+      <button class="mbtn" id="afterSavePlanBtn" style="width:100%;">Return to floor plan</button>
+      <button class="mbtn" id="afterSaveStartBtn" style="width:100%;">Return to start</button>
+    </div>
+  </div>
+</div>
+
 <!-- Same three-way "leave with unsaved changes?" dialog as Site Measure/Viewer
      (Save & leave / Leave without saving / Cancel) -- shown whenever the
      checklist screen is left (Back, the items breadcrumb, or navigating
@@ -771,6 +849,34 @@ body.plan-fullscreen .plan-viewport{
     <div id="jobNoteListEl" style="display:flex; flex-direction:column; gap:6px; max-height:280px; overflow-y:auto; margin-bottom:14px;"></div>
     <div class="modal-actions">
       <button class="mbtn" id="jobNoteViewCancel">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Photo lightbox (2026-09-25, Andrew: "photo on rework page needs to be
+     clickable to open a larger image") -- ported from Install ITP v34 for the
+     checklist gallery here (this app has no rework tracker): any photo
+     thumbnail opens full-screen; tap anywhere or Close to dismiss. -->
+<div class="photo-lightbox" id="photoLightbox" hidden>
+  <img id="photoLightboxImg" alt="Photo">
+  <button type="button" class="mbtn photo-lightbox-close" id="photoLightboxClose">Close</button>
+</div>
+
+<!-- Plan marker menu (2026-09-25, ported from Install ITP v31). Andrew:
+     "add another 2 buttons here that is go to pindrop location and view job
+     note. no more press to go to itp, but press goes to this menu." A plain
+     tap, a long press (550ms) or a real right-click on a coded marker opens
+     this small action sheet; a legacy marker with no joinery code still goes
+     straight to its room list (there's no single item to act on). No "Open
+     rework" here -- this app has no rework tracker. -->
+<div class="modal-backdrop" id="markerMenuBackdrop" hidden>
+  <div class="modal-box" role="dialog" aria-modal="true" style="max-width:300px; text-align:center;">
+    <p style="font-weight:700; margin-bottom:14px;" id="markerMenuTitle"></p>
+    <div class="modal-actions" style="flex-direction:column; gap:8px;">
+      <button class="mbtn mbtn-accent" id="markerMenuOpenItpBtn" style="width:100%;">Open ITP</button>
+      <button class="mbtn" id="markerMenuGoToPinBtn" style="width:100%;">Go to pin-drop location</button>
+      <button class="mbtn" id="markerMenuViewJobNoteBtn" style="width:100%;">View job note</button>
+      <button class="mbtn" id="markerMenuCancelBtn" style="width:100%;">Cancel</button>
     </div>
   </div>
 </div>
@@ -888,11 +994,97 @@ body.plan-fullscreen .plan-viewport{
   }
   var toastEl = document.getElementById("toast");
   var toastTimer = null;
+  // Photo lightbox (2026-09-25) -- see the markup comment.
+  var photoLightbox = document.getElementById("photoLightbox");
+  var photoLightboxImg = document.getElementById("photoLightboxImg");
+  function openPhotoLightbox(dataUrl){
+    photoLightboxImg.src = dataUrl;
+    photoLightbox.hidden = false;
+  }
+  function closePhotoLightbox(){ photoLightbox.hidden = true; photoLightboxImg.src = ""; }
+  photoLightbox.addEventListener("click", closePhotoLightbox);
+  document.getElementById("photoLightboxClose").addEventListener("click", function(e){ e.stopPropagation(); closePhotoLightbox(); });
+  function makePhotoZoomable(img, dataUrl){
+    img.addEventListener("click", function(e){ e.stopPropagation(); openPhotoLightbox(dataUrl); });
+  }
   function showToast(msg){
     toastEl.textContent = msg;
     toastEl.classList.add("show");
     clearTimeout(toastTimer);
     toastTimer = setTimeout(function(){ toastEl.classList.remove("show"); }, 3200);
+  }
+
+  /* ============================== directory-handle cache (2026-09-25, Install ITP round 3) ==============================
+     Ported from Install ITP v28 (Andrew, after v27: "still lagging on my
+     tablet, getting better but still an issue, mostly from the plan still,
+     but also pressing back from an itp is slow."). On Android every
+     getDirectoryHandle() is a real cross-process Storage Access Framework
+     call (tens to hundreds of ms each), and this app re-walked the same
+     fixed paths from the project root on every single action -- opening an
+     item from the plan alone did Project Saves -> UTZLINE ITP -> Manufacture
+     ITP, then the same again for PDF Files, then Project Saves -> Joinery
+     Status for the status sync/machined gate: many round trips before the
+     checklist's own file was even touched, and the same again on the way
+     back out. A directory handle stays valid for as long as the folder
+     exists, so every such walk is memoized here per project. Cleared
+     whenever a different project (or root) is opened, and any one entry is
+     dropped the moment an operation through it fails (folder renamed/
+     deleted underneath us), so the next call re-resolves from scratch. Only
+     SUCCESSFUL resolutions are cached -- a create:false miss is never
+     remembered, because that folder may legitimately appear a moment later
+     (another app in the family creating it). */
+  var dirHandleCache = {};
+  function invalidateDirHandleCache(){ dirHandleCache = {}; }
+  function dirCacheKey(segments){ return segments.join("\u0000"); }
+  // Resolves `segments` (an array of folder names) below `baseHandle`,
+  // memoizing every prefix. `baseKey` namespaces the cache per base handle
+  // (the project handle is the only base in practice, plus the current
+  // level's handle for a legacy project's room folders).
+  function getCachedDir(baseHandle, baseKey, segments, create){
+    var key = baseKey + "\u0000" + dirCacheKey(segments);
+    if (dirHandleCache[key]) return Promise.resolve(dirHandleCache[key]);
+    var parentP = segments.length > 1
+      ? getCachedDir(baseHandle, baseKey, segments.slice(0, -1), create)
+      : Promise.resolve(baseHandle);
+    return parentP.then(function(parentH){
+      return parentH.getDirectoryHandle(segments[segments.length - 1], { create: !!create });
+    }).then(function(h){
+      dirHandleCache[key] = h;
+      return h;
+    });
+  }
+  function projectDir(segments, create){
+    return getCachedDir(state.projectHandle, "project", segments, create);
+  }
+  // Drops every cached handle at or below `segments` -- called by the few
+  // places that catch an error from an operation on a cached handle.
+  function forgetCachedDir(segments){
+    var prefix = "project\u0000" + dirCacheKey(segments);
+    Object.keys(dirHandleCache).forEach(function(k){
+      if (k === prefix || k.indexOf(prefix + "\u0000") === 0) delete dirHandleCache[k];
+    });
+  }
+
+  /* ============================== on-device timings (2026-09-25, Install ITP round 3) ==============================
+     Ported from Install ITP: the app times its own key steps (opening a
+     level, tapping a marker through to the checklist showing, saving, going
+     back to the list) and keeps the last few dozen results in memory
+     (perfLog); anything over 1.5 s is also console.warn'ed. Install ITP's
+     "⏱ Timings" button that showed them was removed at Andrew's request
+     ("get rid of the timings button") and was never added here -- the log
+     itself is cheap and useful in devtools. */
+  var perfLog = [];
+  var PERF_LOG_MAX = 60;
+  function perfStart(label){
+    var t0 = performance.now();
+    var done = false;
+    return function(extra){
+      if (done) return; done = true;
+      var ms = Math.round(performance.now() - t0);
+      perfLog.unshift({ label: label + (extra ? " (" + extra + ")" : ""), ms: ms, at: new Date() });
+      if (perfLog.length > PERF_LOG_MAX) perfLog.length = PERF_LOG_MAX;
+      if (ms > 1500) console.warn("[timing] " + label + ": " + ms + "ms");
+    };
   }
 
   // Every subdirectory of a directory handle, sorted case-insensitively --
@@ -946,6 +1138,9 @@ body.plan-fullscreen .plan-viewport{
      O), since it was the ambiguous one; "itp-manufacture" was always
      unambiguous. */
   function getFloorPlansDir(projectHandle, create){
+    // Cached only when asked about the current project (the isFlatProject()
+    // probe in openProject runs before state.projectHandle is set).
+    if (projectHandle === state.projectHandle) return projectDir(["Project Saves", "Floor Plans"], create);
     return projectHandle.getDirectoryHandle("Project Saves", { create: !!create }).then(function(psH){
       return psH.getDirectoryHandle("Floor Plans", { create: !!create });
     });
@@ -1157,6 +1352,7 @@ body.plan-fullscreen .plan-viewport{
      this update -- the old file is left on disk afterward, untouched. */
   function joineryStatusEventsBranchName(){ return "Joinery Status"; }
   function getJoineryStatusEventsRootDir(projectHandle, create){
+    if (projectHandle === state.projectHandle) return projectDir(["Project Saves", joineryStatusEventsBranchName()], create);
     return projectHandle.getDirectoryHandle("Project Saves", { create: !!create }).then(function(psH){
       return psH.getDirectoryHandle(joineryStatusEventsBranchName(), { create: !!create });
     });
@@ -1324,7 +1520,12 @@ body.plan-fullscreen .plan-viewport{
       var rec = foldJoineryStatusEvents(events);
       var curRank = rec ? joineryStatusRank(rec.status) : 0;
       var newRank = joineryStatusRank(newStatus);
-      if (newRank <= curRank) return rec ? rec.status : null;
+      if (newRank <= curRank){
+        // Nothing to write, but this fold is fresh truth -- keep the plan's
+        // badge cache for this item current with it (Install ITP round 5).
+        if (projectHandle === state.projectHandle) patchBadgeCacheFromRecord(level, room, joineryId, rec);
+        return rec ? rec.status : null;
+      }
       var atIso = new Date().toISOString();
       var stamp = statusEventStamp();
       var payload = { kind: "status", level: level, room: room || "", joineryId: joineryId || "", status: newStatus, by: updatedBy || "", at: atIso };
@@ -1334,7 +1535,13 @@ body.plan-fullscreen .plan-viewport{
         return fh.createWritable();
       }).then(function(w){
         return w.write(JSON.stringify(payload)).then(function(){ return w.close(); });
-      }).then(function(){ return newStatus; });
+      }).then(function(){
+        if (projectHandle === state.projectHandle){
+          var newRec = foldJoineryStatusEvents((events || []).concat([payload]));
+          patchBadgeCacheFromRecord(level, room, joineryId, newRec);
+        }
+        return newStatus;
+      });
     });
   }
   // Called both right after a checklist autosaves/Saves (a fresh sign-off,
@@ -1360,8 +1567,7 @@ body.plan-fullscreen .plan-viewport{
     // openItem (a checklist that reads signed=true because it was already
     // fully signed off before this gate ever existed still can't
     // auto-advance past an item nobody has actually marked machined).
-    return readJoineryStatuses(state.projectHandle).then(function(list){
-      var rec = findJoineryStatus(list, level, room, joineryId);
+    return readJoineryStatusForItem(level, room, joineryId).then(function(rec){
       var rank = rec ? joineryStatusRank(rec.status) : 0;
       if (rank < joineryStatusRank("machined")) return null;
       // Prefers the real signed-in device identity (2026-09-23, so the
@@ -1380,9 +1586,37 @@ body.plan-fullscreen .plan-viewport{
   // catching a machinist marking "machined" in the sibling Machine Schedule
   // app at any point, including while this checklist happens to already be
   // open on this device.
+  // PERFORMANCE (2026-09-25, the Install ITP v26-v30 port): this used to go
+  // through readJoineryStatuses -- listing the ENTIRE project's "Joinery
+  // Status" folder and folding every item in the building (hundreds of
+  // named lookups + listings + reads on a real job) -- on every checklist
+  // open, every completing signature stroke and every Yes/No/N-A tap on a
+  // signed sheet, just to learn ONE item's rank. On Andrew's tablet each
+  // of those calls is hundreds of ms (see the "Level Plan background status
+  // loading" block below), which made this the single biggest cost of
+  // opening a checklist here. It now folds just this item's own event
+  // folder (readJoineryStatusForItem -- the same fold setJoineryStatusForward
+  // already does). The GATE ITSELF is unchanged: still read live and fresh
+  // every time it's asked, never cached, same rank rule.
+  function readJoineryStatusForItem(level, room, joineryId){
+    var projectHandle = state.projectHandle;
+    if (!projectHandle) return Promise.resolve(null);
+    var key = joineryItemPageKey(level, room, joineryId);
+    return migrateLegacyJoineryStatusIfNeeded(projectHandle).then(function(){
+      return listJoineryStatusEventsForItem(projectHandle, key);
+    }).then(function(events){
+      var rec = foldJoineryStatusEvents(events);
+      if (rec) return rec;
+      // No event folder for this item. Same legacy fallback readJoineryStatuses
+      // has: only when the Joinery Status root itself doesn't exist (its
+      // creation failed) does the old joinery-status.json still count.
+      return getJoineryStatusEventsRootDir(projectHandle, false).then(function(){ return null; }, function(){
+        return readLegacyJoineryStatusFile(projectHandle).then(function(list){ return findJoineryStatus(list, level, room, joineryId); });
+      });
+    });
+  }
   function currentItemStatusRank(){
-    return readJoineryStatuses(state.projectHandle).then(function(list){
-      var rec = findJoineryStatus(list, state.levelName, state.roomName, state.currentJoineryNo);
+    return readJoineryStatusForItem(state.levelName, state.roomName, state.currentJoineryNo).then(function(rec){
       return rec ? joineryStatusRank(rec.status) : 0;
     });
   }
@@ -1461,19 +1695,13 @@ body.plan-fullscreen .plan-viewport{
   // itself already carries the Level/Room/Item key, so there's no
   // collision risk), rather than the legacy per-Level/Room nesting.
   function itpAppBranchName(){ return "Manufacture ITP"; }
+  // Both walks go through the directory-handle cache (2026-09-25) -- see
+  // getCachedDir's own comment.
   function getItpChecklistsDirFlat(projectHandle, create){
-    return projectHandle.getDirectoryHandle("Project Saves", { create: !!create }).then(function(psH){
-      return psH.getDirectoryHandle("UTZLINE ITP", { create: !!create });
-    }).then(function(branchH){
-      return branchH.getDirectoryHandle(itpAppBranchName(), { create: !!create });
-    });
+    return getCachedDir(projectHandle, "project", ["Project Saves", "UTZLINE ITP", itpAppBranchName()], create);
   }
   function getItpPdfDirFlat(projectHandle, create){
-    return projectHandle.getDirectoryHandle("PDF Files", { create: !!create }).then(function(pfH){
-      return pfH.getDirectoryHandle("UTZLINE ITP", { create: !!create });
-    }).then(function(branchH){
-      return branchH.getDirectoryHandle(itpAppBranchName(), { create: !!create });
-    });
+    return getCachedDir(projectHandle, "project", ["PDF Files", "UTZLINE ITP", itpAppBranchName()], create);
   }
   // The one filename-shape difference between the two project shapes: a
   // legacy project already scopes the file to a Level/Room folder, so the
@@ -1490,18 +1718,70 @@ body.plan-fullscreen .plan-viewport{
       : sanitizeFileBase(joineryCode);
   }
 
+  /* ============================== legacy (folder-based) project helpers (2026-09-25) ==============================
+     Legacy projects only -- a flat project keeps every checklist in the one
+     shared folder above. This app's own project-wide folder name,
+     "itp-manufacture", was never renamed (unlike Install ITP's "itp" ->
+     "itp-install"), so there is no old-name folder to merge with and no
+     migration step -- these are the same-shaped helpers Install ITP's
+     Level Plan loader and room-open path use (findItpChecklistFileLegacy /
+     listItpRoomFilesLegacyMerged / ensureItpRoomFolderLegacy), kept under
+     the same names so the ported loader below reads 1:1, just resolving one
+     folder instead of two. Every walk goes through the directory-handle
+     cache (projectDir). The two read-only helpers never create anything --
+     they run for every marker on a plan just from looking at it. */
+  function itpFolderName(){ return "itp-manufacture"; }
+  function findItpChecklistFileLegacy(levelName, roomName, fileName){
+    return projectDir([itpFolderName(), levelName, roomName], false).then(function(roomH){
+      return roomH.getFileHandle(fileName, { create: false });
+    });
+  }
+  // Resolves {names, resolve(name) -> dirHandle|null} -- one listing of the
+  // room's own checklist folder (no old-name folder to merge here).
+  function listItpRoomFilesLegacyMerged(levelName, roomName){
+    return projectDir([itpFolderName(), levelName, roomName], false).then(function(roomH){
+      return listJsonFileNames(roomH).then(function(names){ return { handle: roomH, names: names }; });
+    }, function(){ return { handle: null, names: [] }; }).then(function(res){
+      return {
+        names: res.names,
+        resolve: function(){ return res.handle; }
+      };
+    });
+  }
+  function ensureItpRoomFolderLegacy(levelName, roomName){
+    return projectDir([itpFolderName(), levelName, roomName], true);
+  }
+
   /* ============================== tiny IndexedDB kv store ============================== */
   // Own database/store, separate from Site Measure/Viewer's own -- this app
   // only ever needs to remember one thing (the Projects root folder handle).
   var IDB_NAME = "utzline-itp-kv";
   var IDB_STORE = "kv";
+  /* One connection per database (2026-09-25, ported from Install ITP v35).
+     Andrew: "still having slow down after a little use, (possibly caching
+     issues) fix this aswell." This used to open a NEW IndexedDB connection
+     on every single read/write and never close it. Harmless when the app
+     touched IndexedDB twice a session; with the plan's last-known marker
+     snapshot (below) reading it on every plan visit and writing it on every
+     marker result and every save, a few minutes of use left dozens to
+     hundreds of open connections behind, each one making the next slower.
+     Now: open once, keep it; reopen only if the browser closes it
+     (versionchange / close). Same fix for the identity store below. */
+  var idbConnP = null;
   function idbOpen(){
-    return new Promise(function(resolve, reject){
+    if (idbConnP) return idbConnP;
+    idbConnP = new Promise(function(resolve, reject){
       var req = indexedDB.open(IDB_NAME, 1);
       req.onupgradeneeded = function(){ req.result.createObjectStore(IDB_STORE); };
-      req.onsuccess = function(){ resolve(req.result); };
-      req.onerror = function(){ reject(req.error); };
+      req.onsuccess = function(){
+        var db = req.result;
+        db.onversionchange = function(){ db.close(); idbConnP = null; };
+        db.onclose = function(){ idbConnP = null; };
+        resolve(db);
+      };
+      req.onerror = function(){ idbConnP = null; reject(req.error); };
     });
+    return idbConnP;
   }
   function idbGet(key){
     return idbOpen().then(function(db){
@@ -1536,13 +1816,21 @@ body.plan-fullscreen .plan-viewport{
      or vice versa -- just this one small shared pair. */
   var IDENTITY_DB_NAME = "utzline-identity", IDENTITY_STORE = "kv", IDENTITY_KEY = "deviceUserName";
   var deviceUserName = "";
-  function identityDbOpen(){
-    return new Promise(function(resolve, reject){
+  var identityConnP = null;
+  function identityDbOpen(){ // one connection, reused -- see idbOpen
+    if (identityConnP) return identityConnP;
+    identityConnP = new Promise(function(resolve, reject){
       var req = indexedDB.open(IDENTITY_DB_NAME, 1);
       req.onupgradeneeded = function(){ req.result.createObjectStore(IDENTITY_STORE); };
-      req.onsuccess = function(){ resolve(req.result); };
-      req.onerror = function(){ reject(req.error); };
+      req.onsuccess = function(){
+        var db = req.result;
+        db.onversionchange = function(){ db.close(); identityConnP = null; };
+        db.onclose = function(){ identityConnP = null; };
+        resolve(db);
+      };
+      req.onerror = function(){ identityConnP = null; reject(req.error); };
     });
+    return identityConnP;
   }
   function getDeviceUserName(){
     return identityDbOpen().then(function(db){
@@ -1588,7 +1876,33 @@ body.plan-fullscreen .plan-viewport{
   ["Setup","Reconnect","Projects","Levels","LevelPlan","Rooms","Items","Checklist"].forEach(function(n){
     screens[n] = document.getElementById("screen" + n);
   });
+  /* ---- Phone back button (2026-09-25, ported from Install ITP v35) ----
+     Andrew: "can we make it so the phone back button goes back through the
+     app, not close the app". Every screen change pushes one browser
+     history entry; Android's back (a popstate) is turned into this app's
+     own "back" for the screen showing -- the same place its ← link goes
+     (Checklist → the room's items with the usual unsaved-changes guard;
+     Items → rooms; Rooms → levels; Level Plan → rooms; Levels → projects).
+     An open dialog or photo is closed first instead. On the Projects
+     screen there is nothing pushed to pop, so back leaves the app as it
+     always did. */
+  var currentScreenName = null;
+  var navPopInProgress = false;
   function showScreen(name){
+    // Leaving the Level Plan by any route stops its background status
+    // loading from starting any more file reads (see "Level Plan
+    // background status loading" further down).
+    if (name !== "LevelPlan") cancelPlanBackgroundWork();
+    if (name !== currentScreenName){
+      var BASE = { Setup: 1, Reconnect: 1, Projects: 1 };
+      if (navPopInProgress || BASE[name]){
+        try{ history.replaceState({ utz: name }, ""); }catch(e){}
+      } else {
+        try{ history.pushState({ utz: name }, ""); }catch(e){}
+      }
+      currentScreenName = name;
+      navPopInProgress = false;
+    }
     Object.keys(screens).forEach(function(n){ screens[n].classList.toggle("active", n === name); });
     // Level Plan goes full-viewport, edge-to-edge, same as Site Measure/the
     // Viewer's own canvas -- see the "plan-fullscreen" CSS block for why.
@@ -1598,6 +1912,71 @@ body.plan-fullscreen .plan-viewport{
     document.body.classList.toggle("plan-fullscreen", name === "LevelPlan");
     window.scrollTo(0, 0);
   }
+  // Turns the browser's back into this app's back (see showScreen's own
+  // comment). Re-pushes an entry when the back is "consumed" by closing a
+  // dialog or by the user choosing Cancel in the unsaved-changes guard, so
+  // the next back still lands in the app. The pairs below are every
+  // .modal-backdrop in THIS app's markup and its own cancel/close button
+  // (notMachinedBackdrop, the machined-gate block, included).
+  function closeAnyOpenOverlay(){
+    var lb = document.getElementById("photoLightbox");
+    if (lb && !lb.hidden){ lb.hidden = true; return true; }
+    var pairs = [
+      ["markerMenuBackdrop", "markerMenuCancelBtn"], ["jobNoteViewBackdrop", "jobNoteViewCancel"],
+      ["leaveConfirmBackdrop", "leaveConfirmCancel"], ["confirmBackdrop", "confirmCancel"],
+      ["notMachinedBackdrop", "notMachinedOk"],
+      ["promptBackdrop", "promptCancel"], ["photoSourceBackdrop", "photoSourceCancelBtn"],
+      ["numberpadBackdrop", "numberpadCancel"], ["identityAppChecksBackdrop", "identityAppChecksCancel"]
+    ];
+    for (var i = 0; i < pairs.length; i++){
+      var bd = document.getElementById(pairs[i][0]);
+      if (bd && !bd.hidden){
+        var btn = document.getElementById(pairs[i][1]);
+        if (btn && getComputedStyle(btn).display !== "none") btn.click(); else bd.hidden = true;
+        return true;
+      }
+    }
+    return false;
+  }
+  function restoreHistoryEntry(){ try{ history.pushState({ utz: currentScreenName }, ""); }catch(e){} }
+  function appBack(){
+    switch (currentScreenName){
+      case "Checklist":
+        // Same guard as the ← link; a Cancel there keeps the screen, so
+        // give the history entry back.
+        if (dirty && !checklistLocked){
+          restoreHistoryEntry();
+          return showLeaveConfirm().then(function(choice){
+            if (choice === "cancel") return;
+            if (choice === "discard") dirty = false;
+            var p = choice === "save" ? flushPendingSave() : Promise.resolve();
+            // The entry was given back above; replace it with the room's.
+            return p.then(function(){ navPopInProgress = true; return goAfterSave("room"); });
+          });
+        }
+        dirty = false;
+        return goAfterSave("room");
+      case "Items": return populateRoomList().then(function(){ showScreen("Rooms"); });
+      case "LevelPlan": return populateRoomList().then(function(){ showScreen("Rooms"); });
+      case "Rooms": return populateLevelList().then(function(){ showScreen("Levels"); });
+      case "Levels": return populateProjectList().then(function(){ showScreen("Projects"); });
+      default: return Promise.resolve();
+    }
+  }
+  window.addEventListener("popstate", function(){
+    var afterSave = document.getElementById("afterSaveBackdrop");
+    if (afterSave && !afterSave.hidden){
+      // Save & exit's where-to-next: back = "Return to room" (it navigates itself).
+      navPopInProgress = true;
+      document.getElementById("afterSaveRoomBtn").click();
+      return;
+    }
+    if (closeAnyOpenOverlay()){ restoreHistoryEntry(); return; }
+    var BASE = { Setup: 1, Reconnect: 1, Projects: 1 };
+    if (!currentScreenName || BASE[currentScreenName]) return; // nothing above the base -- the browser handles it
+    navPopInProgress = true;
+    appBack();
+  });
   var crumbsEl = document.getElementById("crumbsEl");
   function updateCrumbs(){
     var parts = [];
@@ -2185,6 +2564,7 @@ body.plan-fullscreen .plan-viewport{
     state.levelName = ""; state.roomName = ""; state.currentJoineryNo = "";
     state.flatLevelData = null;
     updateCrumbs();
+    invalidateDirHandleCache();
     return state.rootHandle.getDirectoryHandle(name).then(function(dirH){
       state.projectHandle = dirH;
       return Promise.all([readProjectMeta(dirH), isFlatProject(dirH)]);
@@ -2213,10 +2593,23 @@ body.plan-fullscreen .plan-viewport{
         // "itp-manufacture" is this app's own reserved project-wide
         // folder, and "itp"/"itp-install" are the sibling Install ITP
         // app's (old and renamed names -- see that app's own itp/itp-
-        // install rename) -- none of the three should ever show up as if
-        // it were a level (same exclusion Site Measure's own
-        // listExistingLevels applies).
-        return names.filter(function(n){ return n !== "itp" && n !== "itp-install" && n !== "itp-manufacture" && n !== "itp-delivery"; });
+        // install rename), "itp-delivery" is Delivery ITP's, and the two
+        // "-rework" folders are Install ITP's legacy rework trackers --
+        // none should ever show up as if it were a level (same exclusion
+        // Site Measure's own listExistingLevels applies). itpIndexBranchName()
+        // (2026-09-25, the item-status index cache) is the same kind of
+        // reserved top-level folder for a legacy project and needs the same
+        // exclusion (caught by Install ITP's own test: without it, the
+        // very first checklist save/open of a project creates that folder,
+        // and the NEXT time the Levels screen renders it shows up as a
+        // fake, unopenable "level" of its own). "Project Saves" is the same
+        // class of bug, pre-existing since the joinery-status v2
+        // event-sourcing feature (getJoineryStatusEventsRootDir creates it
+        // at the project root for a legacy project too, lazily); "PDF
+        // Files" likewise. Same RESERVED map as Install ITP v33.
+        var RESERVED = { "itp": 1, "itp-install": 1, "itp-manufacture": 1, "itp-delivery": 1, "itp-install-rework": 1, "itp-manufacture-rework": 1, "Project Saves": 1, "PDF Files": 1 };
+        RESERVED[itpIndexBranchName()] = 1;
+        return names.filter(function(n){ return !RESERVED[n]; });
       });
     return namesPromise.then(function(names){
       levelListEl.innerHTML = "";
@@ -2237,7 +2630,10 @@ body.plan-fullscreen .plan-viewport{
       });
     });
   }
-  function openLevel(name){
+  // Loads a level into state (name, handle, flat data, currentLevelPlan)
+  // WITHOUT showing anything -- openLevel shows the rooms afterwards.
+  // Resolves the plan (or null). (Ported from Install ITP v34.)
+  function loadLevelContext(name){
     state.levelName = name;
     state.roomName = ""; state.currentJoineryNo = "";
     state.flatLevelData = null;
@@ -2248,28 +2644,27 @@ body.plan-fullscreen .plan-viewport{
       state.levelHandle = null; // no Level folder exists in a flat project
       return readFlatLevelFile(state.projectHandle, state.projectName, name).then(function(levelData){
         state.flatLevelData = levelData;
-        var plan = flatLevelDataToPlan(levelData);
-        if (plan){
-          currentLevelPlan = plan;
-          return renderLevelPlanScreen(plan).then(function(){ showScreen("LevelPlan"); });
-        }
-        currentLevelPlan = null;
-        return populateRoomList().then(function(){ showScreen("Rooms"); });
-      }).catch(function(err){
-        console.error("Open level (flat) failed:", err);
-        showToast("Couldn't open that level — try again.");
+        currentLevelPlan = flatLevelDataToPlan(levelData);
+        return currentLevelPlan;
       });
     }
     return state.projectHandle.getDirectoryHandle(name).then(function(dirH){
       state.levelHandle = dirH;
       return loadLevelPlan(dirH, name);
     }).then(function(plan){
-      if (plan){
-        currentLevelPlan = plan;
-        return renderLevelPlanScreen(plan).then(function(){ showScreen("LevelPlan"); });
-      }
-      currentLevelPlan = null;
-      return populateRoomList().then(function(){ showScreen("Rooms"); });
+      currentLevelPlan = plan;
+      return plan;
+    });
+  }
+  // Opening a level lands on its ROOM LIST (Andrew, 2026-09-25: "when you
+  // open a level, instead of going to the map, it should go to the room
+  // list"); the "Floor plan" button there opens the plan. The level's plan
+  // is still loaded here (currentLevelPlan) so that button, "Go to
+  // location" and the rest are instant.
+  function openLevel(name){
+    var endLevelTimer = perfStart("level → room list on screen");
+    return loadLevelContext(name).then(function(plan){
+      return populateRoomList().then(function(){ showScreen("Rooms"); endLevelTimer(plan ? plan.roomlinks.length + " markers loaded" : "no plan"); });
     }).catch(function(err){
       console.error("Open level failed:", err);
       showToast("Couldn't open that level — try again.");
@@ -2283,6 +2678,11 @@ body.plan-fullscreen .plan-viewport{
   });
   document.getElementById("planViewRoomListBtn").addEventListener("click", function(){
     populateRoomList().then(function(){ showScreen("Rooms"); });
+  });
+  document.getElementById("roomsViewPlanBtn").addEventListener("click", function(){
+    if (!currentLevelPlan) return;
+    var endTimer = perfStart("rooms → plan on screen");
+    renderLevelPlanScreen(currentLevelPlan).then(function(){ showScreen("LevelPlan"); endTimer(); });
   });
 
   /* ============================== level plan viewer ==============================
@@ -2405,13 +2805,7 @@ body.plan-fullscreen .plan-viewport{
     var fileName = itpChecklistFileNameFor(state.levelName, roomName, joineryCode, state.projectIsFlat);
     var filePromise = state.projectIsFlat
       ? getItpChecklistsDirFlat(state.projectHandle, false).then(function(dirH){ return dirH.getFileHandle(fileName); })
-      : state.projectHandle.getDirectoryHandle("itp-manufacture").then(function(itpH){
-          return itpH.getDirectoryHandle(state.levelName);
-        }).then(function(levelH){
-          return levelH.getDirectoryHandle(roomName);
-        }).then(function(roomH){
-          return roomH.getFileHandle(fileName);
-        });
+      : findItpChecklistFileLegacy(state.levelName, roomName, fileName);
     return filePromise.then(function(fh){ return fh.getFile(); })
       .then(function(file){ return file.text(); })
       .then(function(text){
@@ -2438,37 +2832,38 @@ body.plan-fullscreen .plan-viewport{
   // through to this function there.
   function computeRoomItpStatus(roomName){
     if (state.projectIsFlat) return Promise.resolve({ complete: false, total: 0 });
-    return state.projectHandle.getDirectoryHandle("itp-manufacture").then(function(itpH){
-      return itpH.getDirectoryHandle(state.levelName);
-    }).then(function(levelH){
-      return levelH.getDirectoryHandle(roomName);
-    }).then(function(roomH){
-      return listJsonFileNames(roomH).then(function(fileNames){
-        if (!fileNames.length) return { complete: false, total: 0 };
-        return fileNames.reduce(function(chain, fileName){
-          return chain.then(function(acc){
-            return roomH.getFileHandle(fileName).then(function(fh){ return fh.getFile(); })
-              .then(function(file){ return file.text(); })
-              .then(function(text){
-                var data = null;
-                try{ data = JSON.parse(text); }catch(e){ data = null; }
-                var itemComplete = !!(data && data.signoff &&
-                  data.signoff.builder && data.signoff.builder.sig &&
-                  data.signoff.supervisor && data.signoff.supervisor.sig) && !checklistHasNoAnswer(data);
-                acc.total++;
-                if (!itemComplete) acc.anyIncomplete = true;
-                return acc;
-              }).catch(function(){ acc.total++; acc.anyIncomplete = true; return acc; });
-          });
-        }, Promise.resolve({ total: 0, anyIncomplete: false })).then(function(acc){
-          return { complete: acc.total > 0 && !acc.anyIncomplete, total: acc.total };
+    return listItpRoomFilesLegacyMerged(state.levelName, roomName).then(function(merged){
+      if (!merged.names.length) return { complete: false, total: 0 };
+      return merged.names.reduce(function(chain, fileName){
+        return chain.then(function(acc){
+          var roomH = merged.resolve(fileName);
+          return roomH.getFileHandle(fileName).then(function(fh){ return fh.getFile(); })
+            .then(function(file){ return file.text(); })
+            .then(function(text){
+              var data = null;
+              try{ data = JSON.parse(text); }catch(e){ data = null; }
+              var itemComplete = !!(data && data.signoff &&
+                data.signoff.builder && data.signoff.builder.sig &&
+                data.signoff.supervisor && data.signoff.supervisor.sig) && !checklistHasNoAnswer(data);
+              acc.total++;
+              if (!itemComplete) acc.anyIncomplete = true;
+              return acc;
+            }).catch(function(){ acc.total++; acc.anyIncomplete = true; return acc; });
         });
+      }, Promise.resolve({ total: 0, anyIncomplete: false })).then(function(acc){
+        return { complete: acc.total > 0 && !acc.anyIncomplete, total: acc.total };
       });
     }).catch(function(){ return { complete: false, total: 0 }; }); // no itp data for this room yet
   }
 
   var PLAN_MARKER_COMPLETE_COLOR = "#1f8a4c";
   var PLAN_MARKER_INCOMPLETE_COLOR = "#c8391c";
+  // Andrew (2026-09-25): "red x if not complete, green tick if finished and
+  // a blue x for started but not finished" -- a third state for a checklist
+  // that has answers (or a signature) but isn't signed off. Comes straight
+  // from the item-status index's own answered/bothSigned fields, so it
+  // costs nothing extra to show.
+  var PLAN_MARKER_STARTED_COLOR = "#2563eb";
   var PLAN_MARKER_PENDING_COLOR = "#8b9490";
 
   // Andrew (2026-09-22): the on-plan label only needs to show the joinery
@@ -2585,29 +2980,520 @@ body.plan-fullscreen .plan-viewport{
     // Fit once the screen is actually visible (see the checklist screen's
     // own signature-pad bug/fix for why this can't happen before showScreen).
     requestAnimationFrame(fitPlanView);
-    // Resolve each marker's real status independently -- one item's status
-    // taking longer never blocks the others from updating as soon as
-    // they're ready.
-    markerRefs.forEach(function(entry){
-      computeItemItpStatus(entry.roomName, entry.joineryCode).then(function(status){
-        var color = status.total === 0 ? PLAN_MARKER_INCOMPLETE_COLOR :
-          (status.complete ? PLAN_MARKER_COMPLETE_COLOR : PLAN_MARKER_INCOMPLETE_COLOR);
-        entry.refs.statusCircle.setAttribute("fill", color);
-        entry.refs.glyph.textContent = status.complete ? "✓" : "✕";
-      });
-    });
-    // One read of the whole shared status file for the level, rather than
-    // one per marker -- readJoineryStatuses' own file never gets big enough
-    // for that to matter, but there's no reason to ask for it twice.
-    readJoineryStatuses(state.projectHandle).then(function(list){
-      markerRefs.forEach(function(entry){
-        var rec = findJoineryStatus(list, state.levelName, entry.roomName, entry.joineryCode);
-        var icon = joineryDisplayIcon(rec);
-        entry.refs.jobStatusBadge.textContent = icon;
-        entry.refs.jobStatusBadge.style.display = icon ? "" : "none";
-      });
+    // Marker ✓/✕ and status badges load in the background, throttled and
+    // cancellable -- see the "Level Plan background status loading" block
+    // below for the full story (this used to fire one full checklist read
+    // per marker, all at once, plus a whole-project status fold, on every
+    // plan open -- what made tapping a marker take ~40s on Android in
+    // Install ITP). A fresh generation supersedes any still-running load
+    // from a previous visit to this (or any other) level.
+    cancelPlanBackgroundWork();
+    var gen = planBgGeneration;
+    planSnapshot = null;
+    // Last-known states first (device-local, no file access), then the real
+    // loaders correct them in the background -- see applyPlanSnapshot.
+    applyPlanSnapshot(markerRefs, gen).then(function(){
+      if (!planWorkIsCurrent(gen)) return;
+      loadLevelPlanItpStatuses(markerRefs, gen);
+      loadLevelPlanJobStatusBadges(markerRefs, gen);
     });
     return Promise.resolve();
+  }
+
+  /* ============================== Level Plan background status loading (2026-09-25, ported from Install ITP rounds 2-5) ==============================
+     Andrew, on Install ITP right after its v26 Items-list fix: "still takes
+     about 40 seconds to load the actual itp from a floor plan, but from the
+     list its instant." Root cause: renderLevelPlanScreen used to call
+     computeItemItpStatus for EVERY marker on the level at once -- each one
+     a full read + JSON.parse of that item's checklist (photos and signature
+     images included) just to pick ✓ or ✕ -- plus a fold of the ENTIRE
+     project's joinery-status event history for the badges. The plan itself
+     paints instantly (markers show "…" while loading), so the screen LOOKS
+     ready, but on Android the file layer (Storage Access Framework) is
+     still grinding through a few hundred queued reads behind it. Tapping a
+     marker then puts openItem's own read at the back of that queue.
+
+     Three changes, all here (same design as Install ITP, adapted to this
+     app's own folders):
+     1. Marker ✓/✕ now comes from the item-status index (same cache the
+        Items list uses) -- ONE small index read per LEVEL, not one full
+        checklist read per item. Which items exist at all comes from ONE
+        directory listing (flat: the shared checklist folder; legacy: one
+        per room), listed only when at least one marker in that room is
+        something the index has never seen. Only items that exist but
+        aren't in the index yet still need a full read, and those backfill
+        the index (misses included, as {missing:true}) so the next visit
+        doesn't.
+     2. Status badges come from a per-level badge cache; only never-seen or
+        over-age keys go through ONE cancellable listing of the Joinery
+        Status folder, filtered to this level's keys, then only the matched
+        items' event files (read together).
+     3. Everything that remains goes through a small queue -- at most
+        PLAN_STATUS_CONCURRENCY file operations in flight -- that stops
+        starting new work the moment anyone navigates off the plan
+        (cancelPlanBackgroundWork, called by openItemFromMarker / openRoom
+        and on any screen change away from LevelPlan). Markers not yet
+        resolved when work is cancelled just stay "…" -- they're recomputed
+        next time the plan opens, and the index makes that fast.
+     Same staleness trade-off as the Items list (see the item-status index
+     block's own comment): a marker can show a stale ✓/✕ for an item changed
+     by another device until someone opens or saves it here. openItem always
+     reads the real file, so this is display-only.
+     Andrew's own tablet numbers (Install ITP round 4): every individual
+     file-system call there is hundreds of ms, and a lookup BY NAME into a
+     content-provider folder scans it -- so fewer calls beats smaller calls,
+     and nothing is listed that the index already answers. */
+  // Round 5: 3 -> 6. Each call is latency-bound (hundreds of ms for tiny
+  // reads), not throughput-bound, so more round trips in flight finish
+  // sooner without contending for much.
+  var PLAN_STATUS_CONCURRENCY = 6;
+  var planBgGeneration = 0;
+  function cancelPlanBackgroundWork(){ planBgGeneration++; }
+  function planWorkIsCurrent(gen){ return gen === planBgGeneration; }
+  // Runs `tasks` (functions returning promises) with at most `limit` in
+  // flight. Once `gen` is stale, no NEW task starts; in-flight ones are
+  // left to finish (a started file read can't be aborted anyway).
+  function runPlanTasksLimited(tasks, limit, gen){
+    var next = 0;
+    function worker(){
+      if (next >= tasks.length || !planWorkIsCurrent(gen)) return Promise.resolve();
+      var task = tasks[next++];
+      return Promise.resolve().then(task).catch(function(){}).then(worker);
+    }
+    var workers = [];
+    for (var w = 0; w < Math.min(limit, tasks.length); w++) workers.push(worker());
+    return Promise.all(workers);
+  }
+  /* ---- last-known marker snapshot (2026-09-25, Andrew: "should the icons
+     be cached so that when you open it they are already there, then it
+     updates in the background?") -- yes. The last resolved ✓/✕ colour and
+     status badge for every marker on a level is kept on THIS device (the
+     app's own IndexedDB store -- no file-system round trip at all) and
+     painted the instant the plan appears; the real loaders below then
+     correct anything that changed, in the background, exactly as before.
+     Purely a first-paint hint, never a source of truth: nothing reads it
+     except this paint, and every live result overwrites it. A save made
+     on this device patches the snapshot immediately so the plan is right
+     even before the background pass gets to it. */
+  // All three ITP apps share the "utzline-itp-kv" IndexedDB on the same
+  // device, so the snapshot key carries the app name: otherwise the
+  // Install ITP's last-known marker colours would paint onto the
+  // Manufacture plan (and vice versa) until the background refresh caught
+  // up. (Install ITP keeps the un-prefixed key it shipped with.)
+  function planSnapshotKey(projectName, levelName){ return "plan-marker-snapshot\u0000Manufacture ITP\u0000" + projectName + "\u0000" + levelName; }
+  function markerSnapshotId(roomName, joineryCode){ return roomName + "\u0000" + (joineryCode || ""); }
+  var planSnapshot = null;        // {id: {fill, glyph, badge}} for the level currently on screen
+  var planSnapshotSaveTimer = null;
+  function schedulePlanSnapshotSave(){
+    clearTimeout(planSnapshotSaveTimer);
+    planSnapshotSaveTimer = setTimeout(function(){
+      if (!planSnapshot || !state.projectName || !state.levelName) return;
+      idbSet(planSnapshotKey(state.projectName, state.levelName), planSnapshot).catch(function(){});
+    }, 400);
+  }
+  function rememberMarkerSnapshot(entry, patch){
+    if (!planSnapshot) return;
+    var id = markerSnapshotId(entry.roomName, entry.joineryCode);
+    var cur = planSnapshot[id] || {};
+    Object.keys(patch).forEach(function(k){ cur[k] = patch[k]; });
+    planSnapshot[id] = cur;
+    schedulePlanSnapshotSave();
+  }
+  // Paints last-known states onto markers that haven't been resolved live
+  // yet this visit. Resolves once applied (or immediately when nothing's stored).
+  function applyPlanSnapshot(markerRefs, gen){
+    return idbGet(planSnapshotKey(state.projectName, state.levelName)).then(function(stored){
+      if (!planWorkIsCurrent(gen)) return;
+      planSnapshot = (stored && typeof stored === "object") ? stored : {};
+      markerRefs.forEach(function(entry){
+        var snap = planSnapshot[markerSnapshotId(entry.roomName, entry.joineryCode)];
+        if (!snap) return;
+        if (!entry.liveTick && snap.fill){
+          entry.refs.statusCircle.setAttribute("fill", snap.fill);
+          entry.refs.glyph.textContent = snap.glyph || "✕";
+        }
+        if (!entry.liveBadge && typeof snap.badge === "string"){
+          entry.refs.jobStatusBadge.textContent = snap.badge;
+          entry.refs.jobStatusBadge.style.display = snap.badge ? "" : "none";
+        }
+      });
+    }, function(){ planSnapshot = planSnapshot || {}; });
+  }
+  // Write-through from a save on this device (see writeChecklistFile) so the
+  // next plan open already shows the new state before the background pass.
+  function patchStoredPlanSnapshot(projectName, levelName, roomName, joineryCode, status){
+    var key = planSnapshotKey(projectName, levelName);
+    var patch = markerPaintFromStatus(status);
+    if (planSnapshot && projectName === state.projectName && levelName === state.levelName){
+      var id = markerSnapshotId(roomName, joineryCode);
+      planSnapshot[id] = Object.assign(planSnapshot[id] || {}, patch);
+    }
+    return idbGet(key).then(function(stored){
+      var snap = (stored && typeof stored === "object") ? stored : {};
+      var id = markerSnapshotId(roomName, joineryCode);
+      snap[id] = Object.assign(snap[id] || {}, patch);
+      return idbSet(key, snap);
+    }).catch(function(){});
+  }
+  function markerPaintFromStatus(status){
+    var fill = status.complete ? PLAN_MARKER_COMPLETE_COLOR :
+      (status.total > 0 && status.started) ? PLAN_MARKER_STARTED_COLOR : PLAN_MARKER_INCOMPLETE_COLOR;
+    return { fill: fill, glyph: status.complete ? "✓" : "✕" };
+  }
+  // status: {complete, total, started?} -- green ✓ finished (signed off, no
+  // "No"), blue ✕ started but not finished, red ✕ not started (no file, or
+  // a file with nothing answered yet).
+  function applyMarkerItpStatus(entry, status){
+    var paint = markerPaintFromStatus(status);
+    entry.refs.statusCircle.setAttribute("fill", paint.fill);
+    entry.refs.glyph.textContent = paint.glyph;
+    entry.liveTick = true;
+    rememberMarkerSnapshot(entry, paint);
+  }
+  function markerStatusFromIndexEntry(e){
+    // `signed` is this app's own "finished" (both signatures, no "No" --
+    // see checklistProgress); an entry written without it falls back to
+    // the raw fields.
+    var complete = typeof e.signed === "boolean" ? e.signed : !!(e.bothSigned && !e.hasNo);
+    return { complete: complete, total: 1, started: !!(e.answered > 0 || e.bothSigned) };
+  }
+  function nameSet(names){
+    var set = {};
+    (names || []).forEach(function(n){ set[n] = true; });
+    return set;
+  }
+  // Same validity bar checklistProgress/itemIndexEntryFromData need -- a
+  // file that doesn't meet it is still shown (as incomplete, exactly as
+  // computeItemItpStatus always did) but never written into the index.
+  function isIndexableChecklist(data){
+    return !!(data && Array.isArray(data.rows) && data.signoff &&
+      data.signoff.builder && data.signoff.supervisor);
+  }
+  // Directory iteration that gives up between entries once `gen` is stale
+  // (a plain for-await can't be interrupted, and on Android a big folder
+  // can take seconds to walk).
+  function listEntriesCancellable(dirH, gen, filterFn){
+    if (!dirH || typeof dirH.values !== "function") return Promise.resolve([]);
+    var out = [], iter = dirH.values();
+    function step(){
+      if (!planWorkIsCurrent(gen)) return Promise.resolve(out);
+      return iter.next().then(function(res){
+        if (res.done) return out;
+        if (res.value && (!filterFn || filterFn(res.value))) out.push(res.value);
+        return step();
+      });
+    }
+    return step();
+  }
+  function loadLevelPlanItpStatuses(markerRefs, gen){
+    var levelName = state.levelName, isFlat = state.projectIsFlat;
+    var legacyRoomMarkers = []; // pre-joinery-code markers -- room-wide status, unchanged logic
+    var byRoom = {};
+    markerRefs.forEach(function(entry){
+      if (!entry.joineryCode){ legacyRoomMarkers.push(entry); return; }
+      (byRoom[entry.roomName] = byRoom[entry.roomName] || []).push(entry);
+    });
+    var roomNames = Object.keys(byRoom);
+    var endTimer = perfStart("plan: marker ticks resolved");
+    var readTasks = [];
+    var stats = { fromIndex: 0, listed: 0, read: 0 };
+
+    // Flat: one shared checklist folder for the whole project. Listed at
+    // most ONCE per pass, and only if some marker actually needs it.
+    var flatNamesP = null;
+    function flatNames(){
+      if (!flatNamesP){
+        stats.listed++;
+        flatNamesP = getItpChecklistsDirFlat(state.projectHandle, false).then(function(h){
+          return listEntriesCancellable(h, gen, function(e){ return e.kind === "file"; });
+        }).then(function(entries){
+          var set = {};
+          entries.forEach(function(e){ set[e.name] = e; }); // keep the handles: no named lookup needed to read
+          return set;
+        }, function(){ return {}; });
+      }
+      return flatNamesP;
+    }
+
+    // ONE index read for the whole level.
+    return readItemIndexFor(levelName).then(function(index){
+      if (!planWorkIsCurrent(gen)) return;
+      var roomTasks = [];
+      roomNames.forEach(function(roomName){
+        var unresolved = [];
+        byRoom[roomName].forEach(function(entry){
+          var fileName = itpChecklistFileNameFor(levelName, roomName, entry.joineryCode, isFlat);
+          var key = indexKey(roomName, fileName);
+          var cached = Object.prototype.hasOwnProperty.call(index, key) ? index[key] : null;
+          if (isLiveIndexEntry(cached)){
+            stats.fromIndex++;
+            applyMarkerItpStatus(entry, markerStatusFromIndexEntry(cached));
+          } else if (cached && cached.missing){
+            stats.fromIndex++;
+            applyMarkerItpStatus(entry, { complete: false, total: 0 });
+          } else {
+            unresolved.push({ entry: entry, fileName: fileName, key: key });
+          }
+        });
+        if (!unresolved.length) return; // the whole room came from the index -- nothing listed, nothing read
+
+        // Something in this room the index has never seen: find out what
+        // exists with ONE listing (flat: the shared folder, once per pass;
+        // legacy: this room's own folder), then read only the files that
+        // are there. Misses are remembered so next time the index answers.
+        roomTasks.push(function(){
+          var existingP = isFlat
+            ? flatNames().then(function(set){
+                return { has: function(n){ return !!set[n]; }, handleFor: function(n){ return set[n] || null; } };
+              })
+            : (stats.listed++, listItpRoomFilesLegacyMerged(levelName, roomName).then(function(merged){
+                var set = nameSet(merged.names);
+                return { has: function(n){ return !!set[n]; }, dirFor: function(n){ return merged.resolve(n); } };
+              }, function(){ return { has: function(){ return false; }, dirFor: function(){ return null; } }; }));
+          return existingP.then(function(existing){
+            if (!planWorkIsCurrent(gen)) return;
+            var backfill = {}, outstanding = 0;
+            function settleOne(){
+              outstanding--;
+              if (outstanding === 0 && planWorkIsCurrent(gen) && Object.keys(backfill).length){
+                return writeItemIndexEntriesFor(levelName, backfill);
+              }
+            }
+            unresolved.forEach(function(u){
+              if (!existing.has(u.fileName)){
+                applyMarkerItpStatus(u.entry, { complete: false, total: 0 }); // not started yet
+                // Remembered for BOTH project shapes: a legacy level with
+                // one never-started marker per room was re-listing every
+                // room on every visit. The legacy Items list never consults
+                // these (it is built from the folder listing), so they can
+                // only ever affect the plan's colour.
+                backfill[u.key] = itemIndexMissingEntry();
+                return;
+              }
+              outstanding++;
+              readTasks.push(function(){
+                stats.read++;
+                var fhP = isFlat
+                  ? Promise.resolve(existing.handleFor(u.fileName))
+                  : (function(){ var d = existing.dirFor(u.fileName); return d ? d.getFileHandle(u.fileName, { create: false }) : Promise.reject(new Error("no folder")); })();
+                return fhP.then(function(fh){ return fh.getFile(); })
+                  .then(function(file){ return file.text(); })
+                  .then(function(text){
+                    var data = null;
+                    try{ data = JSON.parse(text); }catch(e){ data = null; }
+                    if (isIndexableChecklist(data)){
+                      var fresh = itemIndexEntryFromData(data);
+                      applyMarkerItpStatus(u.entry, markerStatusFromIndexEntry(fresh));
+                      backfill[u.key] = fresh;
+                    } else {
+                      applyMarkerItpStatus(u.entry, { complete: false, total: 1, started: false });
+                    }
+                  }, function(){
+                    applyMarkerItpStatus(u.entry, { complete: false, total: 0 });
+                  }).then(settleOne);
+              });
+            });
+            // Nothing to read but misses to remember: write them now.
+            if (outstanding === 0 && Object.keys(backfill).length) return writeItemIndexEntriesFor(levelName, backfill);
+          });
+        });
+      });
+      var legacyTasks = legacyRoomMarkers.map(function(entry){
+        return function(){
+          return computeRoomItpStatus(entry.roomName).then(function(status){
+            if (planWorkIsCurrent(gen)) applyMarkerItpStatus(entry, status);
+          });
+        };
+      });
+      return runPlanTasksLimited(roomTasks, PLAN_STATUS_CONCURRENCY, gen).then(function(){
+        return runPlanTasksLimited(readTasks, PLAN_STATUS_CONCURRENCY, gen);
+      }).then(function(){
+        return runPlanTasksLimited(legacyTasks, PLAN_STATUS_CONCURRENCY, gen);
+      });
+    }).then(function(){
+      endTimer((planWorkIsCurrent(gen) ? "" : "cancelled, ") + markerRefs.length + " markers, " + stats.fromIndex + " from index, " + stats.listed + " folders listed, " + stats.read + " files read");
+    }).catch(function(err){
+      console.error("Loading plan marker statuses failed:", err);
+    });
+  }
+
+  /* ---- Status badges (📏/🏭/⚙️/📦/🚚/🏆 from the shared, event-sourced
+     joinery status) -- Install ITP round 5 (2026-09-25). Andrew's v29
+     screenshot there: "status badges resolved 11095 ms (cancelled, 50 of 60
+     items have history)" -- fifty items each needing their own folder
+     listed and event files read, at hundreds of ms per round trip. So
+     badges get the same treatment as ✓/✕: a per-level cache file,
+     "<Level> - Badges.json" in the same Manufacture ITP Index folder,
+     {key: {icon, at}}. A warm plan reads it once and paints; only keys it
+     has never seen (or whose entry is older than BADGE_CACHE_MAX_AGE_MS)
+     go through the real fold, and the result is written back. The honest
+     limit, stated plainly: a status another app advances (Install ITP,
+     Machine Schedule, Delivery ITP) can show its OLD badge here for up to
+     that age, because those apps don't know about this app's private
+     cache. This app's own advances (in_manufacture on open, manufactured
+     on sign-off) update the entry immediately via setJoineryStatusForward.
+     Purely derived, never a source of truth -- an empty or deleted cache
+     just means one cold pass. NOTE: the machined gate (currentItemStatusRank)
+     never reads this cache -- it folds the live events every time, exactly
+     as before. */
+  var BADGE_CACHE_MAX_AGE_MS = 4 * 60 * 60 * 1000;
+  function badgeIndexFileNameForLevel(levelName){ return sanitizeFileBase(levelName) + " - Badges.json"; }
+  function readBadgeIndexFor(levelName){
+    return getItemIndexRootDir(false).then(function(dirH){
+      return dirH.getFileHandle(badgeIndexFileNameForLevel(levelName), { create: false });
+    }).then(function(fh){ return fh.getFile(); })
+      .then(function(file){ return file.text(); })
+      .then(function(text){
+        try{ var parsed = JSON.parse(text); return (parsed && typeof parsed === "object") ? parsed : {}; }catch(e){ return {}; }
+      }).catch(function(){ return {}; });
+  }
+  var badgeIndexWriteChain = Promise.resolve();
+  function writeBadgeIndexEntriesFor(levelName, entries){
+    if (!entries || !Object.keys(entries).length) return Promise.resolve();
+    var run = function(){
+      return readBadgeIndexFor(levelName).then(function(index){
+        Object.keys(entries).forEach(function(k){ index[k] = entries[k]; });
+        return getItemIndexRootDir(true).then(function(dirH){
+          return dirH.getFileHandle(badgeIndexFileNameForLevel(levelName), { create: true });
+        }).then(function(fh){ return fh.createWritable(); })
+          .then(function(w){ return w.write(JSON.stringify(index)).then(function(){ return w.close(); }); });
+      }).catch(function(err){
+        console.error("Updating badge cache failed (harmless -- badges will just be re-read next time):", err);
+      });
+    };
+    var p = badgeIndexWriteChain.then(run, run);
+    badgeIndexWriteChain = p;
+    return p;
+  }
+  function badgeEntryIsFresh(e){
+    return !!(e && typeof e === "object" && typeof e.icon === "string" && e.at && (Date.now() - e.at) < BADGE_CACHE_MAX_AGE_MS);
+  }
+  // Self-heal from this app's own status writes (see setJoineryStatusForward).
+  function patchBadgeCacheFromRecord(level, room, joineryId, rec){
+    if (!level) return Promise.resolve();
+    var entries = {};
+    entries[joineryItemPageKey(level, room, joineryId)] = { icon: joineryDisplayIcon(rec), at: Date.now() };
+    return writeBadgeIndexEntriesFor(level, entries);
+  }
+  function loadLevelPlanJobStatusBadges(markerRefs, gen){
+    var levelName = state.levelName, projectHandle = state.projectHandle;
+    if (!projectHandle || !markerRefs.length) return Promise.resolve();
+    var byKey = {};
+    markerRefs.forEach(function(entry){
+      var key = joineryItemPageKey(levelName, entry.roomName, entry.joineryCode);
+      (byKey[key] = byKey[key] || []).push(entry);
+    });
+    var endTimer = perfStart("plan: status badges resolved");
+    function paint(key, icon){
+      byKey[key].forEach(function(entry){
+        entry.refs.jobStatusBadge.textContent = icon;
+        entry.refs.jobStatusBadge.style.display = icon ? "" : "none";
+        entry.liveBadge = true;
+        rememberMarkerSnapshot(entry, { badge: icon });
+      });
+    }
+    var fromCache = 0, toResolve = [];
+    return readBadgeIndexFor(levelName).then(function(cache){
+      if (!planWorkIsCurrent(gen)) return;
+      Object.keys(byKey).forEach(function(key){
+        if (badgeEntryIsFresh(cache[key])){ fromCache++; paint(key, cache[key].icon); }
+        else toResolve.push(key);
+      });
+      if (!toResolve.length) return;
+      var wanted = {};
+      toResolve.forEach(function(k){ wanted[k] = true; });
+      var resolved = {};
+      return migrateLegacyJoineryStatusIfNeeded(projectHandle).then(function(){
+        return getJoineryStatusEventsRootDir(projectHandle, false);
+      }).then(function(rootH){
+        if (!planWorkIsCurrent(gen)) return;
+        return listEntriesCancellable(rootH, gen, function(e){ return e.kind === "directory" && !!wanted[e.name]; }).then(function(matched){
+          if (!planWorkIsCurrent(gen)) return;
+          var present = {};
+          matched.forEach(function(d){ present[d.name] = true; });
+          toResolve.forEach(function(key){ if (!present[key]){ paint(key, ""); resolved[key] = { icon: "", at: Date.now() }; } });
+          var tasks = matched.map(function(itemDirH){
+            return function(){
+              return listEntriesCancellable(itemDirH, gen, function(h){ return h.kind === "file" && /\.json$/i.test(h.name); }).then(function(fileHandles){
+                if (!planWorkIsCurrent(gen)) return null;
+                // An item's few event files are read together, not one after another.
+                return Promise.all(fileHandles.map(readJsonFileHandle));
+              }).then(function(events){
+                if (!events || !planWorkIsCurrent(gen)) return;
+                var icon = joineryDisplayIcon(foldJoineryStatusEvents(events.filter(Boolean)));
+                paint(itemDirH.name, icon);
+                resolved[itemDirH.name] = { icon: icon, at: Date.now() };
+              });
+            };
+          });
+          return runPlanTasksLimited(tasks, PLAN_STATUS_CONCURRENCY, gen).then(function(){
+            endTimer((planWorkIsCurrent(gen) ? "" : "cancelled, ") + fromCache + " from cache, " + matched.length + " of " + toResolve.length + " checked items have history");
+            // Whatever was resolved is worth keeping even if the pass was cut short.
+            return writeBadgeIndexEntriesFor(levelName, resolved);
+          });
+        });
+      }, function(){
+        // No Joinery Status folder at all yet -- nothing on this level has a badge.
+        toResolve.forEach(function(key){ paint(key, ""); resolved[key] = { icon: "", at: Date.now() }; });
+        endTimer("no status folder");
+        return writeBadgeIndexEntriesFor(levelName, resolved);
+      });
+    }).then(function(){
+      if (!toResolve.length) endTimer(fromCache + " from cache");
+    }).catch(function(){ /* badges just stay as they were */ });
+  }
+
+  /* ---- Delivery ITP's pin-drop, read-only (2026-09-25) ----
+     "Go to pin-drop location" on the marker menu and "Go to pin" on an
+     item row (Andrew: "add another 2 buttons here that is go to pindrop
+     location and view job note") mean the delivery pin UTZLINE Delivery
+     ITP saved on ITS checklist for this item (`data.deliveryLocationPin =
+     {x,y}`). Ported from Install ITP's own read-only reader; unlike Install
+     ITP there is no "Delivery locations" layer here -- the plan is just
+     centred on the pin and it is pulsed. This app never creates or writes
+     anything under Delivery ITP's own folder. */
+  function deliveryItpFolderNameLegacy(){ return "itp-delivery"; }
+  function deliveryItpAppBranchNameFlat(){ return "Delivery ITP"; }
+  function getDeliveryItpChecklistsDirFlat(projectHandle){
+    return projectHandle.getDirectoryHandle("Project Saves", { create: false }).then(function(psH){
+      return psH.getDirectoryHandle("UTZLINE ITP", { create: false });
+    }).then(function(branchH){
+      return branchH.getDirectoryHandle(deliveryItpAppBranchNameFlat(), { create: false });
+    });
+  }
+  // Resolves this one item's own deliveryLocationPin ({x,y}) or null --
+  // null for "no Delivery ITP checklist file for this item yet", "that
+  // checklist has no pin saved", or any read error; never creates a
+  // folder/file, and never throws. Reuses state.projectIsFlat: a project is
+  // always fully one shape or the other, never mixed, so the same flag that
+  // already picks this app's OWN checklist path also picks Delivery ITP's
+  // (itpChecklistFileNameFor already matches that app's filename shape).
+  function readDeliveryLocationPin(levelName, roomName, joineryCode){
+    if (!joineryCode) return Promise.resolve(null);
+    var fileName = itpChecklistFileNameFor(levelName, roomName, joineryCode, state.projectIsFlat);
+    var filePromise = state.projectIsFlat
+      ? getDeliveryItpChecklistsDirFlat(state.projectHandle).then(function(dirH){ return dirH.getFileHandle(fileName, { create: false }); })
+      : state.projectHandle.getDirectoryHandle(deliveryItpFolderNameLegacy(), { create: false }).then(function(delH){
+          return delH.getDirectoryHandle(levelName, { create: false });
+        }).then(function(levelH){
+          return levelH.getDirectoryHandle(roomName, { create: false });
+        }).then(function(roomH){
+          return roomH.getFileHandle(fileName, { create: false });
+        });
+    return filePromise.then(function(fh){ return fh.getFile(); }).then(function(f){ return f.text(); }).then(function(text){
+      var data = null;
+      try{ data = JSON.parse(text); }catch(e){ data = null; }
+      var pin = data && data.deliveryLocationPin;
+      return (pin && typeof pin.x === "number" && typeof pin.y === "number") ? { x: pin.x, y: pin.y } : null;
+    }).catch(function(){ return null; }); // no Delivery ITP checklist for this item yet -- not an error
+  }
+  // Delivery ITP's OWN accent colours (#b8791a light / #f0b23e dark) for
+  // the pin pulse, so a delivery location never reads as one of this app's
+  // own markers.
+  function deliveryPinAccentColor(){
+    var theme = document.documentElement.getAttribute("data-theme");
+    var isDark = theme === "dark" || (theme !== "light" && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    return isDark ? "#f0b23e" : "#b8791a";
   }
 
   function planPointFromEvent(e){ return { x: e.clientX, y: e.clientY }; }
@@ -2618,15 +3504,44 @@ body.plan-fullscreen .plan-viewport{
     var mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
     planPinchStart = { dist: dist, mid: mid, view: { scale: planView.scale, tx: planView.tx, ty: planView.ty } };
   }
+  // Long-press-to-open-the-marker-menu (ported from Install ITP, 2026-09-25)
+  // -- touch equivalent of the "contextmenu" (real right-click) handler
+  // further down, same 550ms threshold and pattern as UTZLINE Scheduler's
+  // own marker long-press. Cancelled the moment the pointer moves past the
+  // same 4px drag threshold pan already uses, or a second pointer joins
+  // (pinch), so it never fires mid-pan/pinch. A plain tap that releases
+  // before the timer fires opens the same menu from planPointerEnd (Andrew:
+  // "no more press to go to itp, but press goes to this menu").
+  var LONG_PRESS_MS = 550;
+  var planLongPressTimer = null, planLongPressFired = false;
+  function clearPlanLongPressTimer(){
+    if (planLongPressTimer){ clearTimeout(planLongPressTimer); planLongPressTimer = null; }
+  }
   levelPlanSvg.addEventListener("pointerdown", function(e){
+    // A right-click (or middle-click) fires its own pointerdown/pointerup
+    // pair with a real mouse, same as a left-click -- without this guard
+    // that pair would ALSO run the tap logic below, firing right alongside
+    // (and racing) the "contextmenu" handler's own showMarkerMenu call.
+    if (e.pointerType === "mouse" && e.button !== 0) return;
     levelPlanSvg.setPointerCapture(e.pointerId);
     planPointers.set(e.pointerId, planPointFromEvent(e));
     if (planPointers.size === 1){
       var markerEl = e.target.closest(".plan-marker");
       planDragStart = { x: e.clientX, y: e.clientY, tx: planView.tx, ty: planView.ty, moved: false, markerEl: markerEl };
       planPinchStart = null;
+      planLongPressFired = false;
+      clearPlanLongPressTimer();
+      if (markerEl){
+        var lpRoom = markerEl.getAttribute("data-room"), lpCode = markerEl.getAttribute("data-code");
+        planLongPressTimer = setTimeout(function(){
+          if (planDragStart && planDragStart.moved) return;
+          planLongPressFired = true;
+          showMarkerMenu(lpRoom, lpCode);
+        }, LONG_PRESS_MS);
+      }
     } else if (planPointers.size === 2){
       planDragStart = null;
+      clearPlanLongPressTimer();
       planStartPinch();
     }
   });
@@ -2635,7 +3550,7 @@ body.plan-fullscreen .plan-viewport{
     planPointers.set(e.pointerId, planPointFromEvent(e));
     if (planPointers.size === 1 && planDragStart){
       var dx = e.clientX - planDragStart.x, dy = e.clientY - planDragStart.y;
-      if (Math.abs(dx) + Math.abs(dy) > 4) planDragStart.moved = true;
+      if (Math.abs(dx) + Math.abs(dy) > 4){ planDragStart.moved = true; clearPlanLongPressTimer(); }
       planView.tx = planDragStart.tx + dx;
       planView.ty = planDragStart.ty + dy;
       applyPlanView();
@@ -2655,8 +3570,9 @@ body.plan-fullscreen .plan-viewport{
     }
   });
   function planPointerEnd(e){
-    var tappedMarkerEl = (planPointers.size === 1 && planDragStart && !planDragStart.moved && planDragStart.markerEl)
-      ? planDragStart.markerEl : null;
+    clearPlanLongPressTimer();
+    var wasPlainTap = !!(planPointers.size === 1 && planDragStart && !planDragStart.moved && !planLongPressFired);
+    var tappedMarkerEl = (wasPlainTap && planDragStart.markerEl) ? planDragStart.markerEl : null;
     var tapMarkerRoom = tappedMarkerEl ? tappedMarkerEl.getAttribute("data-room") : null;
     var tapMarkerCode = tappedMarkerEl ? tappedMarkerEl.getAttribute("data-code") : null;
     planPointers.delete(e.pointerId);
@@ -2668,12 +3584,37 @@ body.plan-fullscreen .plan-viewport{
       planPinchStart = null;
     }
     if (tapMarkerRoom){
-      if (tapMarkerCode) openItemFromMarker(tapMarkerRoom, tapMarkerCode);
-      else openRoom(tapMarkerRoom); // legacy marker, pre-dates joinery codes -- fall back to the room's item list
+      // Andrew (2026-09-25): "no more press to go to itp, but press goes to
+      // this menu." A plain tap and a long press now both open the marker
+      // menu (showMarkerMenu still sends a legacy no-code marker straight
+      // to its room list, since there's no single item to act on).
+      showMarkerMenu(tapMarkerRoom, tapMarkerCode);
     }
   }
   levelPlanSvg.addEventListener("pointerup", planPointerEnd);
   levelPlanSvg.addEventListener("pointercancel", planPointerEnd);
+  // Real right-click, for desktop -- same "long-press equivalent" pattern
+  // as UTZLINE Scheduler's own marker menu (its own contextmenu handler).
+  levelPlanSvg.addEventListener("contextmenu", function(e){
+    // Always swallowed on the plan (Andrew, 2026-09-25: "It still try's to
+    // select the background stuff also. This should all be unselectable"
+    // -- a long press on the plan IMAGE was raising Chrome's "Open image /
+    // Copy image / Download image" sheet). A right-click on a marker still
+    // opens the marker menu; anywhere else it just does nothing.
+    e.preventDefault();
+    var markerEl = e.target.closest(".plan-marker");
+    if (!markerEl) return;
+    clearPlanLongPressTimer();
+    showMarkerMenu(markerEl.getAttribute("data-room"), markerEl.getAttribute("data-code"));
+  });
+  // And app-wide: no browser context menu / long-press sheet on anything
+  // that isn't a text field -- the app's own long presses and buttons are
+  // the only long-press behaviour wanted anywhere.
+  document.addEventListener("contextmenu", function(e){
+    var t = e.target;
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+    e.preventDefault();
+  });
   levelPlanSvg.addEventListener("wheel", function(e){
     if (!currentLevelPlan) return;
     e.preventDefault();
@@ -2721,7 +3662,13 @@ body.plan-fullscreen .plan-viewport{
       : listSubdirNames(state.levelHandle).then(function(names){
           return names.filter(function(n){ return n !== "saves" && n !== "pdfs" && n !== "backup"; });
         });
+    document.getElementById("roomsPlanRow").style.display = currentLevelPlan ? "" : "none";
     return namesPromise.then(function(names){
+      // Andrew (2026-09-25): "the rooms list page needs to be in alphabetical
+      // order" -- a flat project's rooms were shown in the order they were
+      // added in UTZLINE Projects. Natural/numeric, case-insensitive, so
+      // "AH.002" sorts before "AH.010" and "MH.2" before "MH.10".
+      names = names.slice().sort(function(a, b){ return String(a).localeCompare(String(b), undefined, { sensitivity: "base", numeric: true }); });
       roomListEl.innerHTML = "";
       if (!names.length){
         roomListEl.innerHTML = state.projectIsFlat
@@ -2730,12 +3677,16 @@ body.plan-fullscreen .plan-viewport{
         return;
       }
       names.forEach(function(name){
-        var row = document.createElement("button");
-        row.type = "button";
-        row.className = "list-row";
-        row.innerHTML = '<div class="row-main"><div class="row-title"></div></div>';
+        var row = document.createElement("div");
+        row.className = "list-row has-actions";
+        row.setAttribute("role", "button"); row.tabIndex = 0;
+        row.innerHTML = '<div class="row-main"><div class="row-title"></div></div>' +
+          '<div class="row-actions"><button type="button" class="mbtn row-goto-location">Go to location</button>' +
+          '<button type="button" class="mbtn mbtn-accent row-open">Open room</button></div>';
         row.querySelector(".row-title").textContent = name;
         row.addEventListener("click", function(){ openRoom(name); });
+        row.querySelector(".row-goto-location").addEventListener("click", function(e){ e.stopPropagation(); showOnPlan(name, ""); });
+        row.querySelector(".row-open").addEventListener("click", function(e){ e.stopPropagation(); openRoom(name); });
         roomListEl.appendChild(row);
       });
     });
@@ -2746,7 +3697,8 @@ body.plan-fullscreen .plan-viewport{
   // own itp-manufacture/<level>/<room> folder and reuses that SAME
   // folder for PDFs too, exactly as before this release. (No rename
   // migration here -- only Install ITP's own "itp" folder was ever
-  // ambiguous; itp-manufacture's name is unchanged.)
+  // ambiguous; itp-manufacture's name is unchanged.) Every walk is
+  // memoized through the directory-handle cache (2026-09-25).
   function ensureItpRoomFolder(){
     if (state.projectIsFlat){
       return Promise.all([
@@ -2756,19 +3708,16 @@ body.plan-fullscreen .plan-viewport{
         return { checklistsHandle: results[0], pdfHandle: results[1] };
       });
     }
-    return state.projectHandle.getDirectoryHandle("itp-manufacture", { create: true }).then(function(itpH){
-      return itpH.getDirectoryHandle(state.levelName, { create: true });
-    }).then(function(levelH){
-      return levelH.getDirectoryHandle(state.roomName, { create: true });
-    }).then(function(roomH){
+    return ensureItpRoomFolderLegacy(state.levelName, state.roomName).then(function(roomH){
       return { checklistsHandle: roomH, pdfHandle: roomH };
     });
   }
   function openRoom(name){
+    cancelPlanBackgroundWork(); // a legacy no-code marker tap lands here straight from the plan
     state.roomName = name;
     state.currentJoineryNo = "";
     updateCrumbs();
-    var roomHandlePromise = state.projectIsFlat ? Promise.resolve(null) : state.levelHandle.getDirectoryHandle(name);
+    var roomHandlePromise = state.projectIsFlat ? Promise.resolve(null) : getCachedDir(state.levelHandle, "level\u0000" + state.levelName, [name], false);
     return roomHandlePromise.then(function(dirH){
       state.roomHandle = dirH;
       return ensureItpRoomFolder();
@@ -2779,6 +3728,7 @@ body.plan-fullscreen .plan-viewport{
       return populateItemList();
     }).then(function(){ showScreen("Items"); }).catch(function(err){
       console.error("Open room failed:", err);
+      invalidateDirHandleCache(); // a cached folder handle may be what went stale -- next attempt re-resolves
       showToast("Couldn't open that room — try again.");
     });
   }
@@ -2793,10 +3743,15 @@ body.plan-fullscreen .plan-viewport{
   // room's item list, same as opening it the normal way, since this sets
   // up state exactly like openRoom() would.
   function openItemFromMarker(roomName, joineryCode){
+    // Stop the plan's background status loading from queuing any more file
+    // reads ahead of this item's own -- the whole point of the 2026-09-25
+    // round-2 fix (see "Level Plan background status loading").
+    cancelPlanBackgroundWork();
+    pendingOpenTimer = perfStart("plan tap → checklist on screen");
     state.roomName = roomName;
     state.currentJoineryNo = "";
     updateCrumbs();
-    var roomHandlePromise = state.projectIsFlat ? Promise.resolve(null) : state.levelHandle.getDirectoryHandle(roomName);
+    var roomHandlePromise = state.projectIsFlat ? Promise.resolve(null) : getCachedDir(state.levelHandle, "level\u0000" + state.levelName, [roomName], false);
     return roomHandlePromise.then(function(dirH){
       state.roomHandle = dirH;
       return ensureItpRoomFolder();
@@ -2804,6 +3759,7 @@ body.plan-fullscreen .plan-viewport{
       state.itpRoomHandle = handles.checklistsHandle;
       state.itpPdfHandle = handles.pdfHandle;
       document.getElementById("itemsHeading").textContent = "“" + roomName + "” — joinery items";
+      itemListEl.innerHTML = '<div class="empty-note">Loading…</div>'; // this room's list hasn't been built yet -- see leaveChecklistScreen
       // openItem() itself creates the file if missing and falls back to a
       // blank checklist in memory when it's empty/unreadable, so there's no
       // need to pre-check existence here the way "+ New Joinery Item" does
@@ -2812,8 +3768,73 @@ body.plan-fullscreen .plan-viewport{
       return openItem(fileName, joineryCode);
     }).catch(function(err){
       console.error("Open joinery item from plan failed:", err);
+      invalidateDirHandleCache(); // a cached folder handle may be what went stale -- next attempt re-resolves
       showToast("Couldn't open that joinery item — try again.");
     });
+  }
+
+  /* ---- Marker menu (2026-09-25, ported from Install ITP v31) -- see
+     markerMenuBackdrop's own markup comment. A legacy marker with no
+     joinery code at all (pre-dates joinery codes) has no single item to act
+     on, so it falls back to the room-list behaviour a plain tap always used
+     for that case. No "Open rework" here -- this app has no rework tracker. */
+  var markerMenuBackdrop = document.getElementById("markerMenuBackdrop");
+  var markerMenuTitle = document.getElementById("markerMenuTitle");
+  var markerMenuTarget = null;
+  function showMarkerMenu(roomName, joineryCode){
+    if (!joineryCode){ openRoom(roomName); return; }
+    markerMenuTarget = { room: roomName, code: joineryCode };
+    markerMenuTitle.textContent = joineryCode;
+    markerMenuBackdrop.hidden = false;
+  }
+  function hideMarkerMenu(){ markerMenuBackdrop.hidden = true; markerMenuTarget = null; }
+  document.getElementById("markerMenuCancelBtn").addEventListener("click", hideMarkerMenu);
+  markerMenuBackdrop.addEventListener("click", function(e){ if (e.target === markerMenuBackdrop) hideMarkerMenu(); });
+  document.getElementById("markerMenuOpenItpBtn").addEventListener("click", function(){
+    var t = markerMenuTarget;
+    hideMarkerMenu();
+    if (t) openItemFromMarker(t.room, t.code);
+  });
+  // "Go to pin-drop location" (2026-09-25): the item's delivery pin, as
+  // saved by UTZLINE Delivery ITP on ITS checklist for this item. Pans/zooms
+  // this plan to it and pulses it. Stays on the plan -- no navigation.
+  document.getElementById("markerMenuGoToPinBtn").addEventListener("click", function(){
+    var t = markerMenuTarget;
+    hideMarkerMenu();
+    if (t) goToPinFor(t.room, t.code);
+  });
+  // "View job note" (2026-09-25): the same read-only job-note list the
+  // checklist screen's own button shows, opened straight from the plan.
+  document.getElementById("markerMenuViewJobNoteBtn").addEventListener("click", function(){
+    var t = markerMenuTarget;
+    hideMarkerMenu();
+    if (t) openViewJobNoteDialogFor(state.levelName, t.room, t.code);
+  });
+  // Centre the plan view on a world point at a comfortable zoom (at least
+  // the fit scale, up to a close-in view), keeping the animation simple.
+  // Andrew (2026-09-25): "when it goes to joinery / room location, it needs
+  // to zoom in closer" -- at least 5x the fit-to-screen scale (a marker
+  // reads at roughly 100-plus px across), never zooming OUT from a closer
+  // view the user already had.
+  var PLAN_FOCUS_ZOOM = 5;
+  function centrePlanOn(wx, wy){
+    var rect = planViewportEl.getBoundingClientRect();
+    var vw = rect.width || 300, vh = rect.height || 300;
+    var fitScale = Math.min(vw / currentLevelPlan.imageW, vh / currentLevelPlan.imageH) * 0.94;
+    planView.scale = clampPlanScale(Math.max(planView.scale, fitScale * PLAN_FOCUS_ZOOM));
+    planView.tx = vw / 2 - wx * planView.scale;
+    planView.ty = vh / 2 - wy * planView.scale;
+    applyPlanView();
+  }
+  function pulsePlanPoint(wx, wy, colour){
+    var ns = "http://www.w3.org/2000/svg";
+    var ring = document.createElementNS(ns, "circle");
+    ring.setAttribute("cx", wx); ring.setAttribute("cy", wy); ring.setAttribute("r", 30);
+    ring.setAttribute("fill", "none"); ring.setAttribute("stroke", colour || deliveryPinAccentColor()); ring.setAttribute("stroke-width", "6");
+    ring.setAttribute("class", "plan-pulse-ring");
+    ring.style.pointerEvents = "none";
+    levelPlanWorldG.appendChild(ring);
+    setTimeout(function(){ if (ring.parentNode) ring.parentNode.removeChild(ring); }, 2400);
   }
 
   /* ============================== joinery item list ============================== */
@@ -2829,6 +3850,117 @@ body.plan-fullscreen .plan-viewport{
     var bothSigned = !!(data.signoff.builder.sig && data.signoff.supervisor.sig);
     var signed = bothSigned && !hasNo;
     return { answered: answered, total: data.rows.length, signed: signed, bothSigned: bothSigned, hasNo: hasNo };
+  }
+
+  /* ============================== item-status index cache (2026-09-25, ported from Install ITP v26/v28/v30) ==============================
+     Andrew: "itps are still taking minutes to load pages on android." Root
+     cause, confirmed by reading the actual list-building code: the Items
+     screen (buildItemRow/buildFlatItemRow below) used to open, read, and
+     JSON.parse the FULL checklist file for every single item in the room --
+     including every attached photo's base64 data -- just to derive a
+     one-line status ("Signed off" / "3 of 17 checked" / etc), SEQUENTIALLY,
+     one item at a time. On Android's File System Access implementation
+     (backed by the Storage Access Framework), each file open/read is a real
+     cross-process round trip, and a checklist with several photos can be a
+     genuine multi-hundred-KB-to-low-MB JSON file -- so a room with even a
+     modest number of items meant doing that many full reads, one after
+     another, just to render a list.
+
+     Fix: a small, derived, best-effort cache -- ONE JSON file per LEVEL
+     ("Manufacture ITP Index/<Level>.json"; flat: the same name under
+     "Project Saves/UTZLINE ITP/Manufacture ITP Index/"), holding
+     {"<Room>/<checklist filename>": {joineryNo, answered, total, signed,
+     bothSigned, hasNo, updatedAt}} (or {missing:true}) for every item ever
+     saved, opened or looked at in that level -- kept in its own dedicated
+     folder, completely separate from the real checklist files and the
+     joinery register, so it can never be mistaken for one by any existing
+     directory-listing code. Entries are keyed by room + filename
+     (indexKey), so a legacy project's "K-01.json" in two rooms can't
+     collide. Written every time a checklist is saved (writeChecklistFile)
+     or simply opened (openItem, which already reads the full file anyway)
+     -- so it self-heals on ordinary use even after an external sync
+     (Dropbox, a synced Android folder) lands a change this app didn't make
+     itself. NOT a source of truth for anything -- openItem always reads
+     the real checklist file fresh, exactly as before; this cache only ever
+     feeds the Items list's status label and the plan's marker colour, so
+     the one honest limitation is that a room's list can show a
+     briefly-stale summary for an item nobody on THIS device has opened or
+     saved since an external sync touched it, until the next time anyone
+     does either. A level opened for the first time since this update
+     ships falls back to the old full-file read for just the missing items,
+     in parallel rather than one at a time, and backfills the cache in a
+     single batched write so every visit after that first one is fast.
+     Writes to the level file are serialized through one promise chain so
+     two rooms backfilling at once can't lose each other's entries. */
+  function itpIndexBranchName(){ return "Manufacture ITP Index"; }
+  function getItemIndexRootDir(create){
+    return state.projectIsFlat
+      ? projectDir(["Project Saves", "UTZLINE ITP", itpIndexBranchName()], create)
+      : projectDir([itpIndexBranchName()], create);
+  }
+  function itemIndexFileNameForLevel(levelName){ return sanitizeFileBase(levelName) + ".json"; }
+  function indexKey(roomName, fileName){ return sanitizeFileBase(roomName) + "/" + fileName; }
+  function readItemIndexFor(levelName){
+    return getItemIndexRootDir(false).then(function(dirH){
+      return dirH.getFileHandle(itemIndexFileNameForLevel(levelName), { create: false });
+    }).then(function(fh){ return fh.getFile(); })
+      .then(function(file){ return file.text(); })
+      .then(function(text){
+        try{ var parsed = JSON.parse(text); return (parsed && typeof parsed === "object") ? parsed : {}; }catch(e){ return {}; }
+      }).catch(function(){ return {}; }); // missing folder/file/bad JSON -- just means every item is a cache miss this time
+  }
+  function readItemIndex(){ return readItemIndexFor(state.levelName); }
+  function writeItemIndexEntries(entries){ return writeItemIndexEntriesFor(state.levelName, entries); }
+  var itemIndexWriteChain = Promise.resolve();
+  function writeItemIndexEntriesFor(levelName, entries){
+    if (!entries || !Object.keys(entries).length) return Promise.resolve();
+    var run = function(){
+      return readItemIndexFor(levelName).then(function(index){
+        Object.keys(entries).forEach(function(k){ index[k] = entries[k]; });
+        return getItemIndexRootDir(true).then(function(dirH){
+          return dirH.getFileHandle(itemIndexFileNameForLevel(levelName), { create: true });
+        }).then(function(fh){ return fh.createWritable(); })
+          .then(function(w){ return w.write(JSON.stringify(index)).then(function(){ return w.close(); }); });
+      }).catch(function(err){
+        // Never lets a cache-write problem affect the real save/open it rode
+        // in on -- worst case here is just that the NEXT list open re-reads
+        // the full files again instead of using the (still-missing) cache.
+        console.error("Updating item-status index failed (harmless -- Items list will just re-read the full file(s) next time):", err);
+        forgetCachedDir(state.projectIsFlat ? ["Project Saves", "UTZLINE ITP", itpIndexBranchName()] : [itpIndexBranchName()]);
+      });
+    };
+    var p = itemIndexWriteChain.then(run, run);
+    itemIndexWriteChain = p;
+    return p;
+  }
+  // Current-room convenience: `fileName` is the checklist's own filename.
+  function writeItemIndexEntry(fileName, entry){
+    var entries = {};
+    entries[indexKey(state.roomName, fileName)] = entry;
+    return writeItemIndexEntries(entries);
+  }
+  // A flat project's Items list and Level Plan both have to answer "has
+  // this item's checklist even been started?" for every item, every time.
+  // That used to be one failing getFileHandle() probe per never-started
+  // item on EVERY visit (nothing to cache -- there's no file). Now a
+  // confirmed-missing item is remembered in the same index as
+  // {missing: true}, so a warm visit needs no probe at all. Self-heals
+  // exactly like a normal entry: writeChecklistFile replaces it with real
+  // data the moment this device creates the file; a file created by
+  // ANOTHER device shows as "Not started" here until someone opens it on
+  // this device (openItem reads the real file and rewrites the entry). A
+  // legacy project's Items list never consults these (its list IS the
+  // folder listing) -- only its Level Plan does.
+  function itemIndexMissingEntry(){ return { missing: true, updatedAt: "" }; }
+  function isLiveIndexEntry(e){ return !!(e && typeof e === "object" && !e.missing); }
+  function itemIndexEntryFromData(data){
+    var prog = checklistProgress(data);
+    return {
+      joineryNo: data.joineryNo || "",
+      answered: prog.answered, total: prog.total,
+      signed: prog.signed, bothSigned: prog.bothSigned, hasNo: prog.hasNo,
+      updatedAt: data.updatedAt || ""
+    };
   }
   // A cloud-sync client (Dropbox desktop/mobile, or an Android storage
   // provider backing a synced folder) renames rather than overwrites a file
@@ -2853,39 +3985,80 @@ body.plan-fullscreen .plan-viewport{
     if (/_\d{10,}$/.test(base)) return true;
     return false;
   }
-  function buildItemRow(fileName, isArtifact){
+  // Renders a row purely from a lightweight status entry (the shape
+  // itemIndexEntryFromData produces) -- never touches the full checklist
+  // file. Shared by the cache-hit path AND the cold/fallback path below
+  // (which computes this same entry from a full read, once, then hands it
+  // here exactly the same way) so there's only one place that draws a row.
+  function renderItemRowFromEntry(fileName, entry, isArtifact, fallbackJoineryNo){
+    var joineryNo = (entry && entry.joineryNo) || fallbackJoineryNo;
+    var row = document.createElement("div");
+    row.setAttribute("role", "button"); row.tabIndex = 0;
+    row.className = "list-row" + (isArtifact ? " artifact-row" : " has-actions");
+    var sub = "Not started";
+    var chipClass = "";
+    var chipText = "Open";
+    if (entry){
+      if (entry.signed) { sub = "Signed off"; chipClass = "done"; chipText = "Signed off"; }
+      else if (entry.bothSigned && entry.hasNo) { sub = "Signed — flagged item(s), not finished"; chipClass = "warn"; chipText = "Flagged"; }
+      else if (entry.answered > 0) sub = entry.answered + " of " + entry.total + " checked";
+    }
+    if (isArtifact){
+      sub = "⚠ Possible sync duplicate — " + sub;
+      chipClass = "warn";
+      chipText = "Review";
+    }
+    row.innerHTML =
+      '<div class="row-main"><div class="row-title"></div><div class="row-sub"></div></div>' +
+      '<div class="row-chip ' + chipClass + '"></div>' +
+      (isArtifact ? "" : rowActionsHtml());
+    row.querySelector(".row-title").textContent = joineryNo;
+    row.querySelector(".row-sub").textContent = sub;
+    row.querySelector(".row-chip").textContent = chipText;
+    row.addEventListener("click", function(){ openItem(fileName, joineryNo); });
+    if (!isArtifact) wireRowActions(row, state.roomName, joineryNo, function(){ openItem(fileName, joineryNo); });
+    return row;
+  }
+  // Row action buttons (2026-09-25, Andrew: "instead of long press to goto
+  // location, have buttons on the item (room / joinery item) goto location,
+  // goto pin, open itp" + "also a view job note button").
+  function rowActionsHtml(){
+    return '<div class="row-actions">' +
+      '<button type="button" class="mbtn row-goto-location">Go to location</button>' +
+      '<button type="button" class="mbtn row-goto-pin">Go to pin</button>' +
+      '<button type="button" class="mbtn row-job-note">View job note</button>' +
+      '<button type="button" class="mbtn mbtn-accent row-open">Open ITP</button></div>';
+  }
+  function wireRowActions(row, roomName, joineryCode, openFn){
+    row.querySelector(".row-goto-location").addEventListener("click", function(e){ e.stopPropagation(); showOnPlan(roomName, joineryCode); });
+    row.querySelector(".row-goto-pin").addEventListener("click", function(e){ e.stopPropagation(); goToPinFor(roomName, joineryCode); });
+    row.querySelector(".row-job-note").addEventListener("click", function(e){ e.stopPropagation(); openViewJobNoteDialogFor(state.levelName, roomName, joineryCode); });
+    row.querySelector(".row-open").addEventListener("click", function(e){ e.stopPropagation(); openFn(); });
+  }
+  // Builds one Items-list row. `index` (from readItemIndex(), or null/
+  // undefined to always take the cold path -- used for the rarely-opened
+  // sync-duplicate toggle below, where there's no point pre-loading the
+  // cache) is checked FIRST: a hit never opens the real checklist file at
+  // all, which is the entire point of the item-status index above. A miss
+  // falls back to the old full-file read, and hands back the freshly
+  // computed entry as `backfillEntry` so the caller can write every miss
+  // from this pass into the index in ONE batched write, rather than one
+  // read-modify-write cycle per item.
+  function buildItemRow(fileName, isArtifact, index){
+    var fallbackJoineryNo = fileName.replace(/\.json$/i, "");
+    var key = indexKey(state.roomName, fileName);
+    var cached = index && Object.prototype.hasOwnProperty.call(index, key) ? index[key] : null;
+    if (isLiveIndexEntry(cached)){
+      return Promise.resolve({ fileName: fileName, row: renderItemRowFromEntry(fileName, cached, isArtifact, fallbackJoineryNo), backfillEntry: null });
+    }
     return state.itpRoomHandle.getFileHandle(fileName).then(function(fh){ return fh.getFile(); })
       .then(function(file){ return file.text(); })
       .then(function(text){
         var data = null;
         try{ data = JSON.parse(text); }catch(e){ data = null; }
-        var joineryNo = (data && data.joineryNo) || fileName.replace(/\.json$/i, "");
-        var row = document.createElement("button");
-        row.type = "button";
-        row.className = "list-row" + (isArtifact ? " artifact-row" : "");
-        var sub = "Not started";
-        var chipClass = "";
-        var chipText = "Open";
-        if (data){
-          var prog = checklistProgress(data);
-          if (prog.signed) { sub = "Signed off"; chipClass = "done"; chipText = "Signed off"; }
-          else if (prog.bothSigned && prog.hasNo) { sub = "Signed — flagged item(s), not finished"; chipClass = "warn"; chipText = "Flagged"; }
-          else if (prog.answered > 0) sub = prog.answered + " of " + prog.total + " checked";
-        }
-        if (isArtifact){
-          sub = "⚠ Possible sync duplicate — " + sub;
-          chipClass = "warn";
-          chipText = "Review";
-        }
-        row.innerHTML =
-          '<div class="row-main"><div class="row-title"></div><div class="row-sub"></div></div>' +
-          '<div class="row-chip ' + chipClass + '"></div>';
-        row.querySelector(".row-title").textContent = joineryNo;
-        row.querySelector(".row-sub").textContent = sub;
-        row.querySelector(".row-chip").textContent = chipText;
-        row.addEventListener("click", function(){ openItem(fileName, joineryNo); });
-        return row;
-      }).catch(function(){ return null; /* skip an unreadable file rather than failing the whole list */ });
+        var entry = data ? itemIndexEntryFromData(data) : null;
+        return { fileName: fileName, key: key, row: renderItemRowFromEntry(fileName, entry, isArtifact, fallbackJoineryNo), backfillEntry: entry };
+      }).catch(function(){ return { fileName: fileName, key: key, row: null, backfillEntry: null }; /* skip an unreadable file rather than failing the whole list */ });
   }
   var itemsHintEl = document.getElementById("itemsHint");
   var newItemBtn = document.getElementById("newItemBtn");
@@ -2907,17 +4080,25 @@ body.plan-fullscreen .plan-viewport{
       if (!cleanNames.length){
         itemListEl.innerHTML = '<div class="empty-note">No joinery items checked off in this room yet.</div>';
       }
-      return cleanNames.reduce(function(chain, fileName){
-        return chain.then(function(){
-          return buildItemRow(fileName, false).then(function(row){ if (row) itemListEl.appendChild(row); });
+      // Cache-first, and in PARALLEL rather than one file at a time -- see
+      // the item-status index's own comment above for why this used to be
+      // the dominant cost behind "taking minutes to load pages on Android".
+      return readItemIndex().then(function(index){
+        return Promise.all(cleanNames.map(function(fileName){ return buildItemRow(fileName, false, index); }));
+      }).then(function(results){
+        var backfill = {};
+        results.forEach(function(r){
+          if (r.row) itemListEl.appendChild(r.row);
+          if (r.backfillEntry) backfill[r.key] = r.backfillEntry;
         });
-      }, Promise.resolve()).then(function(){
+        return writeItemIndexEntries(backfill);
+      }).then(function(){
         if (!artifactNames.length) return;
         var toggleWrap = document.createElement("div");
         toggleWrap.style.marginTop = "10px";
         var toggleBtn = document.createElement("button");
         toggleBtn.type = "button";
-        toggleBtn.className = "mbtn";
+        toggleBtn.className = "mbtn sync-dupes-toggle";
         toggleBtn.textContent = "⚠ " + artifactNames.length + " sync-duplicate file" +
           (artifactNames.length === 1 ? "" : "s") + " found — tap to review";
         var artifactsList = document.createElement("div");
@@ -2931,11 +4112,11 @@ body.plan-fullscreen .plan-viewport{
           artifactsList.style.display = "flex";
           if (artifactsBuilt) return;
           artifactsBuilt = true;
-          artifactNames.reduce(function(chain, fileName){
-            return chain.then(function(){
-              return buildItemRow(fileName, true).then(function(row){ if (row) artifactsList.appendChild(row); });
-            });
-          }, Promise.resolve());
+          // Rare and already collapsed by default -- no need for the index
+          // here, always the (still-parallelized) cold path.
+          Promise.all(artifactNames.map(function(fileName){ return buildItemRow(fileName, true, null); })).then(function(results){
+            results.forEach(function(r){ if (r.row) artifactsList.appendChild(r.row); });
+          });
         });
         toggleWrap.appendChild(toggleBtn);
         toggleWrap.appendChild(artifactsList);
@@ -2958,53 +4139,70 @@ body.plan-fullscreen .plan-viewport{
         itemListEl.innerHTML = '<div class="empty-note">No joinery items in UTZLINE Projects for this room yet — add one there first.</div>';
         return;
       }
-      return matches.reduce(function(chain, item){
-        return chain.then(function(){
-          return buildFlatItemRow(item).then(function(row){ if (row) itemListEl.appendChild(row); });
+      return readItemIndex().then(function(index){
+        return Promise.all(matches.map(function(item){ return buildFlatItemRow(item, index); }));
+      }).then(function(results){
+        var backfill = {};
+        results.forEach(function(r){
+          if (r.row) itemListEl.appendChild(r.row);
+          if (r.backfillEntry) backfill[r.key] = r.backfillEntry;
         });
-      }, Promise.resolve());
+        return writeItemIndexEntries(backfill);
+      });
     });
   }
-  function buildFlatItemRow(item){
+  function renderFlatItemRowFromEntry(item, fileName, entry){
+    var joineryId = item.joineryId || "";
+    var row = document.createElement("div");
+    row.setAttribute("role", "button"); row.tabIndex = 0;
+    row.className = "list-row has-actions";
+    var sub = item.description || "Not started";
+    var chipClass = "";
+    var chipText = "Open";
+    if (entry){
+      if (entry.signed) { sub = "Signed off" + (item.description ? " · " + item.description : ""); chipClass = "done"; chipText = "Signed off"; }
+      else if (entry.bothSigned && entry.hasNo) { sub = "Signed — flagged, not finished" + (item.description ? " · " + item.description : ""); chipClass = "warn"; chipText = "Flagged"; }
+      else if (entry.answered > 0) sub = (entry.answered + " of " + entry.total + " checked") + (item.description ? " · " + item.description : "");
+    }
+    row.innerHTML =
+      '<div class="row-main"><div class="row-title"></div><div class="row-sub"></div></div>' +
+      '<div class="row-chip ' + chipClass + '"></div>' + rowActionsHtml();
+    row.querySelector(".row-title").textContent = joineryId;
+    row.querySelector(".row-sub").textContent = sub;
+    row.querySelector(".row-chip").textContent = chipText;
+    row.addEventListener("click", function(){ openItem(fileName, joineryId); });
+    wireRowActions(row, state.roomName, joineryId, function(){ openItem(fileName, joineryId); });
+    return row;
+  }
+  // Same cache-first/parallel/batched-backfill shape as buildItemRow above,
+  // adapted for the flat-project register (one register ENTRY per item,
+  // not one FILE per item -- see populateItemListFlat).
+  function buildFlatItemRow(item, index){
     var joineryId = item.joineryId || "";
     var fileName = itpChecklistFileNameFor(state.levelName, state.roomName, joineryId, true);
+    var key = indexKey(state.roomName, fileName);
+    var cached = index && Object.prototype.hasOwnProperty.call(index, key) ? index[key] : null;
+    if (cached){
+      // A remembered "not started yet" renders exactly like no entry at all.
+      var entry = isLiveIndexEntry(cached) ? cached : null;
+      return Promise.resolve({ fileName: fileName, key: key, row: renderFlatItemRowFromEntry(item, fileName, entry), backfillEntry: null });
+    }
     return state.itpRoomHandle.getFileHandle(fileName, { create: false }).then(function(fh){ return fh.getFile(); })
       .then(function(file){ return file.text(); })
       .then(function(text){
         var data = null;
         try{ data = JSON.parse(text); }catch(e){ data = null; }
-        return buildFlatItemRowFromData(item, fileName, data);
+        var entry = data ? itemIndexEntryFromData(data) : null;
+        return { fileName: fileName, key: key, row: renderFlatItemRowFromEntry(item, fileName, entry), backfillEntry: entry };
       }, function(){
         // No checklist started yet -- still show the row (the item exists
         // the moment UTZLINE Projects creates it, per Andrew's "pick from
         // existing items only" decision), unlike a legacy project's
         // files-are-the-list model, where a never-created file is simply
-        // never in the list at all.
-        return buildFlatItemRowFromData(item, fileName, null);
+        // never in the list at all. Remembered as missing so the next visit
+        // doesn't probe for it again (see itemIndexMissingEntry).
+        return { fileName: fileName, key: key, row: renderFlatItemRowFromEntry(item, fileName, null), backfillEntry: itemIndexMissingEntry() };
       });
-  }
-  function buildFlatItemRowFromData(item, fileName, data){
-    var joineryId = item.joineryId || "";
-    var row = document.createElement("button");
-    row.type = "button";
-    row.className = "list-row";
-    var sub = item.description || "Not started";
-    var chipClass = "";
-    var chipText = "Open";
-    if (data){
-      var prog = checklistProgress(data);
-      if (prog.signed) { sub = "Signed off" + (item.description ? " · " + item.description : ""); chipClass = "done"; chipText = "Signed off"; }
-      else if (prog.bothSigned && prog.hasNo) { sub = "Signed — flagged, not finished" + (item.description ? " · " + item.description : ""); chipClass = "warn"; chipText = "Flagged"; }
-      else if (prog.answered > 0) sub = (prog.answered + " of " + prog.total + " checked") + (item.description ? " · " + item.description : "");
-    }
-    row.innerHTML =
-      '<div class="row-main"><div class="row-title"></div><div class="row-sub"></div></div>' +
-      '<div class="row-chip ' + chipClass + '"></div>';
-    row.querySelector(".row-title").textContent = joineryId;
-    row.querySelector(".row-sub").textContent = sub;
-    row.querySelector(".row-chip").textContent = chipText;
-    row.addEventListener("click", function(){ openItem(fileName, joineryId); });
-    return row;
   }
   newItemBtn.addEventListener("click", function(){
     if (state.projectIsFlat) return; // hidden in this mode -- see populateItemList
@@ -3070,6 +4268,17 @@ body.plan-fullscreen .plan-viewport{
       return fh.createWritable();
     }).then(function(w){
       return w.write(payload).then(function(){ return w.close(); });
+    }).then(function(){
+      // Keep this level's item-status index in sync on every real save --
+      // see that cache's own comment above for why the Items list needs
+      // this instead of re-reading every full checklist file. Never allowed
+      // to fail the actual save (writeItemIndexEntry swallows its own
+      // errors) -- worst case here is just a stale list label until the
+      // next save or open of this same item.
+      var entry = itemIndexEntryFromData(data);
+      // ...and the plan's last-known marker paint for this item (device-local).
+      patchStoredPlanSnapshot(state.projectName, state.levelName, state.roomName, data.joineryNo || "", markerStatusFromIndexEntry(entry));
+      return writeItemIndexEntry(fileName, entry);
     });
   }
 
@@ -3521,6 +4730,7 @@ body.plan-fullscreen .plan-viewport{
       var img = document.createElement("img");
       img.src = photo.dataUrl;
       img.alt = "Photo " + (idx + 1);
+      makePhotoZoomable(img, photo.dataUrl);
       cell.appendChild(img);
       var rm = document.createElement("button");
       rm.type = "button"; rm.className = "photo-thumb-remove"; rm.title = "Remove this photo";
@@ -3587,7 +4797,9 @@ body.plan-fullscreen .plan-viewport{
     dirty = false;
     var fileName = state.currentFileHandle.name;
     var savedData = state.currentData, savedRoom = state.roomName, savedLevel = state.levelName, savedJoinery = state.currentJoineryNo;
+    var endSaveTimer = perfStart("save: checklist written");
     return writeChecklistFile(fileName, savedData).then(function(){
+      endSaveTimer((savedData.photos || []).length + " photos");
       // Fire-and-forget: a sign-off completing just now is exactly the
       // moment this app can auto-advance the shared status (see
       // syncJoineryStatusFromChecklist's own comment) -- never blocks the
@@ -3627,7 +4839,9 @@ body.plan-fullscreen .plan-viewport{
       var justReachedSignedOff = signedOffNow && !state.wasSignedOffLastSave;
       state.wasSignedOffLastSave = signedOffNow;
       if (justReachedSignedOff){
-        return exportChecklistPdf().catch(function(err){
+        var endPdfTimer = perfStart("save: sign-off PDF exported");
+        return exportChecklistPdf().then(function(){ endPdfTimer(); }, function(err){
+          endPdfTimer("failed");
           console.error("Auto-export on sign-off failed:", err);
         });
       }
@@ -3665,7 +4879,34 @@ body.plan-fullscreen .plan-viewport{
     });
   }
 
+  var pendingOpenTimer = null; // set by openItemFromMarker so the timing spans the whole tap
+  /* ---- Locked (read-only) once signed off -- Andrew, 2026-09-25 ----
+     "once an itp is saved and exported (complete), that itp page becomes
+     locked (read only)." A checklist that is signed off (both signatures,
+     no row flagged "No" -- this app's own isChecklistSignedOff, the same
+     rule that triggers the PDF and the "manufactured" status advance)
+     opens read-only: every answer button, comment, the notes, both
+     signature blocks and the photo controls are disabled, a banner says
+     so, and the action button reads "Exit" (nothing to save). A flagged
+     one (signatures present but a "No" outstanding) is NOT locked -- it
+     still needs fixing. "View job note" keeps working. */
+  var screenChecklistEl = document.getElementById("screenChecklist");
+  var checklistLockedBanner = document.getElementById("checklistLockedBanner");
+  var checklistLocked = false;
+  function setChecklistLocked(locked){
+    checklistLocked = !!locked;
+    screenChecklistEl.classList.toggle("locked", checklistLocked);
+    checklistLockedBanner.hidden = !checklistLocked;
+    screenChecklistEl.querySelectorAll("input, textarea, #checkRowsEl button").forEach(function(el){
+      if (el.id === "photoFileInput") return;
+      el.disabled = checklistLocked;
+    });
+    document.getElementById("addPhotoBtn").disabled = checklistLocked;
+    document.getElementById("saveChecklistBtn").textContent = checklistLocked ? "Exit" : "Save & exit";
+  }
   function openItem(fileName, joineryNo){
+    var endTimer = pendingOpenTimer || perfStart("list tap → checklist on screen");
+    pendingOpenTimer = null;
     return flushPendingSave().then(function(){
       return state.itpRoomHandle.getFileHandle(fileName, { create: true });
     }).then(function(fh){
@@ -3696,6 +4937,16 @@ body.plan-fullscreen .plan-viewport{
       // them has to happen only once the screen is actually laid out.
       showScreen("Checklist");
       renderChecklistIntoScreen(data);
+      setChecklistLocked(isChecklistSignedOff(data));
+      endTimer((data.photos || []).length + " photos");
+      // Self-heal the item-status index (2026-09-25) with what was just
+      // read -- this app's own writeChecklistFile already keeps it fresh on
+      // every Save, but this covers a change that landed some OTHER way
+      // (an external sync, a Dropbox upload after the fact) between this
+      // room's last visit and now: the moment anyone actually opens THIS
+      // item again, its list entry catches up too. Free -- `data` is
+      // already parsed in memory here regardless.
+      writeItemIndexEntry(fileName, itemIndexEntryFromData(data));
       // New (2026-09-23) -- see joineryStatusRank's own comment. Independent
       // of the in_manufacture/backfill writes just below (this only READS
       // joinery-status.json, so there's no write-clobber risk the way those
@@ -3722,30 +4973,156 @@ body.plan-fullscreen .plan-viewport{
         syncJoineryStatusFromChecklist(data, state.levelName, state.roomName, state.currentJoineryNo);
       });
     }).catch(function(err){
+      endTimer("failed");
       console.error("Open joinery item failed:", err);
       showToast("Couldn't open that item — try again.");
     });
   }
 
-  document.getElementById("saveChecklistBtn").addEventListener("click", function(){
-    dirty = true;
-    flushPendingSave().then(function(){ showToast("Saved."); });
-  });
-
-  document.getElementById("deleteItemBtn").addEventListener("click", function(){
-    if (!state.currentFileHandle) return;
-    genericConfirm("Delete the checklist for “" + state.currentJoineryNo + "”? This can't be undone.").then(function(ok){
-      if (!ok) return;
-      var fileName = state.currentFileHandle.name;
-      dirty = false;
-      state.itpRoomHandle.removeEntry(fileName).then(function(){
-        showToast("Deleted “" + state.currentJoineryNo + "”.");
-        return populateItemList();
-      }).then(function(){ showScreen("Items"); }).catch(function(err){
-        console.error("Delete joinery item failed:", err);
-        showToast("Couldn't delete that item — try again.");
+  /* ---- Return to floor plan / show on plan (2026-09-25, ported from Install ITP v32/v33) ----
+     returnToFloorPlan(focus): back to the current level's plan, from
+     memory when it's already loaded (no re-read), otherwise via openLevel
+     (which lands on the room list for a level with no plan). `focus`
+     ({roomName, joineryCode?}) centres and pulses that item's marker (or
+     all of a room's markers) and, when Delivery ITP has a pin-drop saved
+     for the item, frames and pulses that too (Andrew: "takes you to that
+     joinery item, if there is a pin drop for that item, it brings that up
+     on the button also"). Used by the after-save choice, the checklist's
+     "Cancel / return to floor plan" button, and the row buttons. */
+  function returnToFloorPlan(focus){
+    var levelName = state.levelName;
+    if (!currentLevelPlan) return openLevel(levelName);
+    state.currentJoineryNo = "";
+    updateCrumbs();
+    return renderLevelPlanScreen(currentLevelPlan).then(function(){
+      showScreen("LevelPlan");
+      if (focus) requestAnimationFrame(function(){ requestAnimationFrame(function(){ focusPlanOn(focus); }); }); // after renderLevelPlanScreen's own queued fitPlanView
+    });
+  }
+  function focusPlanOn(focus){
+    if (!currentLevelPlan || state.levelName !== (focus.levelName || state.levelName)) return;
+    var markers = currentLevelPlan.roomlinks.filter(function(o){
+      return o.roomName === focus.roomName && (!focus.joineryCode || (o.joineryCode || "") === focus.joineryCode);
+    });
+    if (!markers.length){ showToast((focus.joineryCode || focus.roomName) + " isn't marked on this level's plan."); return; }
+    var pts = markers.map(function(o){ return { x: o.x, y: o.y }; });
+    function frame(){
+      framePlanPoints(pts);
+      markers.forEach(function(o){ pulsePlanPoint(o.x, o.y, PLAN_MARKER_STARTED_COLOR); });
+    }
+    frame();
+    if (!focus.joineryCode) return;
+    readDeliveryLocationPin(state.levelName, focus.roomName, focus.joineryCode).then(function(pin){
+      if (!pin || !currentLevelPlan || !document.getElementById("screenLevelPlan").classList.contains("active")) return;
+      pts.push(pin);
+      frame();
+      pulsePlanPoint(pin.x, pin.y);
+    });
+  }
+  // Frame a set of world points: one point -> centrePlanOn; several ->
+  // zoom so they all fit with padding, centred on their midpoint.
+  function framePlanPoints(pts){
+    if (pts.length === 1){ centrePlanOn(pts[0].x, pts[0].y); return; }
+    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    pts.forEach(function(p){ minX = Math.min(minX, p.x); minY = Math.min(minY, p.y); maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y); });
+    var rect = planViewportEl.getBoundingClientRect();
+    var vw = rect.width || 300, vh = rect.height || 300;
+    var pad = 120;
+    var fitScale = Math.min(vw / currentLevelPlan.imageW, vh / currentLevelPlan.imageH) * 0.94;
+    // As close as still shows every point, capped at the single-point zoom,
+    // never wider than 2x fit (a room's markers are close together).
+    var scale = clampPlanScale(Math.min(vw / (maxX - minX + pad * 2), vh / (maxY - minY + pad * 2), fitScale * PLAN_FOCUS_ZOOM));
+    planView.scale = Math.max(scale, fitScale * 2);
+    planView.tx = vw / 2 - ((minX + maxX) / 2) * planView.scale;
+    planView.ty = vh / 2 - ((minY + maxY) / 2) * planView.scale;
+    applyPlanView();
+  }
+  // "Go to location" on a room / item row.
+  function showOnPlan(roomName, joineryCode){
+    if (!currentLevelPlan){ showToast("This level has no floor plan."); return Promise.resolve(); }
+    return returnToFloorPlan({ roomName: roomName, joineryCode: joineryCode || "" });
+  }
+  // "Go to pin" on an item row, and the marker menu's "Go to pin-drop
+  // location": the item's delivery pin as saved by UTZLINE Delivery ITP,
+  // read-only (see readDeliveryLocationPin). This app has no pin of its own.
+  function goToPinFor(roomName, joineryCode){
+    if (!currentLevelPlan){ showToast("This level has no floor plan."); return Promise.resolve(); }
+    var levelName = state.levelName;
+    return readDeliveryLocationPin(levelName, roomName, joineryCode).then(function(pin){
+      if (!pin){ showToast("No pin drop for " + joineryCode + " yet (set in Delivery ITP)."); return; }
+      return returnToFloorPlan(null).then(function(){
+        requestAnimationFrame(function(){ requestAnimationFrame(function(){
+          centrePlanOn(pin.x, pin.y);
+          pulsePlanPoint(pin.x, pin.y);
+          showToast("Delivery location for " + joineryCode + ".");
+        }); });
       });
     });
+  }
+  /* ---- Save & exit (2026-09-25, ported from Install ITP v31) ----
+     Andrew: "save on the itp should be save and exit, no need for export
+     pdf or delete this item buttons, if an itp is complete and saved, it
+     then creates the pdf. this then has a pop up that is return to room or
+     return to floor plan or return to start." The save is the same
+     flushPendingSave as before (which already auto-exports the PDF on the
+     transition into Signed off -- the v13 rule here, unchanged); what
+     changed is that the button then asks where to go instead of staying
+     put. The "Export PDF" and "Delete this item" buttons are gone from the
+     screen (exportChecklistPdf itself is still used by the auto-export;
+     deleting a checklist is no longer offered here at all). */
+  var afterSaveBackdrop = document.getElementById("afterSaveBackdrop");
+  var afterSaveResolve = null;
+  function showAfterSaveChoice(signedOff, pdfMade){
+    document.getElementById("afterSaveTitle").textContent = checklistLocked && !pdfMade ? "Signed off (locked)." : (signedOff ? "Saved — signed off." : "Saved.");
+    document.getElementById("afterSaveHint").textContent = pdfMade ? "The ITP PDF has been created." : (signedOff ? "This ITP is complete and read only." : "Not signed off yet — you can come back to it any time.");
+    afterSaveBackdrop.hidden = false;
+    return new Promise(function(resolve){ afterSaveResolve = resolve; });
+  }
+  function closeAfterSave(choice){
+    afterSaveBackdrop.hidden = true;
+    var r = afterSaveResolve; afterSaveResolve = null;
+    if (r) r(choice);
+  }
+  document.getElementById("afterSaveRoomBtn").addEventListener("click", function(){ closeAfterSave("room"); });
+  document.getElementById("afterSavePlanBtn").addEventListener("click", function(){ closeAfterSave("plan"); });
+  document.getElementById("afterSaveStartBtn").addEventListener("click", function(){ closeAfterSave("start"); });
+  // No backdrop-tap dismiss and no cancel: the save has already happened,
+  // and the checklist is being left -- "room" is the neutral default.
+  function goAfterSave(choice){
+    if (!choice) return Promise.resolve();
+    if (choice === "plan") return returnToFloorPlan(null);
+    if (choice === "start"){
+      return populateProjectList().then(function(){ showScreen("Projects"); });
+    }
+    itemListEl.classList.add("refreshing");
+    showScreen("Items");
+    return populateItemList().then(function(){ itemListEl.classList.remove("refreshing"); }, function(){ itemListEl.classList.remove("refreshing"); });
+  }
+  document.getElementById("returnToPlanBtn").addEventListener("click", function(){
+    if (!dirty || checklistLocked){ dirty = false; returnToFloorPlan(null); return; }
+    showLeaveConfirm().then(function(choice){
+      if (choice === "cancel") return;
+      if (choice === "discard"){ dirty = false; return returnToFloorPlan(null); }
+      return flushPendingSave().then(function(){ return returnToFloorPlan(null); });
+    });
+  });
+  document.getElementById("saveChecklistBtn").addEventListener("click", function(){
+    if (checklistLocked){
+      // Read-only: nothing to save -- straight to the where-to-next choice.
+      dirty = false;
+      showAfterSaveChoice(true, false).then(goAfterSave);
+      return;
+    }
+    var wasSignedOff = state.wasSignedOffLastSave;
+    dirty = true;
+    var endTimer = perfStart("save & exit: saved");
+    flushPendingSave().then(function(){
+      endTimer();
+      var data = state.currentData;
+      var signedOff = !!(data && isChecklistSignedOff(data));
+      var pdfMade = signedOff && !wasSignedOff;
+      return showAfterSaveChoice(signedOff, pdfMade);
+    }).then(goAfterSave);
   });
 
   /* ---- View job note (2026-09-22) -- see listJobNotes' own comment ---- */
@@ -3755,9 +5132,14 @@ body.plan-fullscreen .plan-viewport{
   document.getElementById("jobNoteViewCancel").addEventListener("click", closeViewJobNoteDialog);
   jobNoteViewBackdrop.addEventListener("click", function(e){ if (e.target === jobNoteViewBackdrop) closeViewJobNoteDialog(); });
   document.getElementById("viewJobNoteBtn").addEventListener("click", function(){
+    openViewJobNoteDialogFor(state.levelName, state.roomName, state.currentJoineryNo);
+  });
+  // Shared by the checklist's own button, the item rows and the plan's
+  // marker menu (2026-09-25).
+  function openViewJobNoteDialogFor(levelName, roomName, joineryCode){
     jobNoteListEl.innerHTML = "<p class=\"jobnote-empty\">Loading…</p>";
     jobNoteViewBackdrop.hidden = false;
-    var key = joineryItemPageKey(state.levelName, state.roomName, state.currentJoineryNo);
+    var key = joineryItemPageKey(levelName, roomName, joineryCode);
     listJobNotes(state.projectHandle, key).then(function(notes){
       jobNoteListEl.innerHTML = "";
       if (!notes.length){
@@ -3791,7 +5173,7 @@ body.plan-fullscreen .plan-viewport{
       console.error("List job notes failed:", err);
       jobNoteListEl.innerHTML = "<p class=\"jobnote-empty\">Couldn't load job notes — try again.</p>";
     });
-  });
+  }
 
   /* ============================== PDF export ============================== */
   function wrapText(doc, text, maxWidth){
@@ -4116,12 +5498,9 @@ body.plan-fullscreen .plan-viewport{
       showToast("Exported “" + fileName + "”.");
     });
   }
-  document.getElementById("exportPdfBtn").addEventListener("click", function(){
-    flushPendingSave().then(exportChecklistPdf).catch(function(err){
-      console.error("Export PDF failed:", err);
-      showToast("Couldn't export the PDF — try again.");
-    });
-  });
+  // The manual "Export PDF" button is gone (2026-09-25, see Save & exit's
+  // comment) -- exportChecklistPdf is now only ever called by the
+  // auto-export on the transition into Signed off (flushPendingSave).
 
   /* ============================== generic prompt / confirm modals ============================== */
   var promptBackdrop = document.getElementById("promptBackdrop");
@@ -4158,6 +5537,29 @@ body.plan-fullscreen .plan-viewport{
   var confirmResolve = null;
   function genericConfirm(msg){
     confirmMsgEl.textContent = msg;
+    confirmCancel.style.display = "";
+    confirmCancel.textContent = "Cancel";
+    confirmOk.textContent = "Confirm";
+    confirmOk.className = "mbtn mbtn-danger";
+    confirmBackdrop.hidden = false;
+    return new Promise(function(resolve){ confirmResolve = resolve; });
+  }
+  // Confirm with custom button labels (2026-09-25), accent-styled OK.
+  function genericConfirmLabelled(msg, okLabel, cancelLabel){
+    confirmMsgEl.textContent = msg;
+    confirmCancel.style.display = "";
+    confirmCancel.textContent = cancelLabel || "Cancel";
+    confirmOk.textContent = okLabel || "OK";
+    confirmOk.className = "mbtn mbtn-accent";
+    confirmBackdrop.hidden = false;
+    return new Promise(function(resolve){ confirmResolve = resolve; });
+  }
+  // Same modal, OK only (2026-09-25) -- for a message that just needs acknowledging.
+  function genericAlert(msg){
+    confirmMsgEl.textContent = msg;
+    confirmCancel.style.display = "none";
+    confirmOk.textContent = "OK";
+    confirmOk.className = "mbtn mbtn-accent";
     confirmBackdrop.hidden = false;
     return new Promise(function(resolve){ confirmResolve = resolve; });
   }
@@ -4204,19 +5606,37 @@ body.plan-fullscreen .plan-viewport{
   // already saved via the Save button) it just goes straight back, no
   // dialog needed. Landing spot either way is the joinery-items list for
   // this room -- one level up from the checklist.
+  // Install ITP round 3 (2026-09-25, Andrew: "pressing back from an itp is
+  // slow"): the Items screen now appears the instant the choice is made,
+  // showing the room's previous rows dimmed, and refreshes behind the
+  // save. Before, the checklist stayed on screen -- looking frozen -- until
+  // the full checklist write (every photo's base64, on Android's slow file
+  // layer) AND the list rebuild had both finished. Nothing about what gets
+  // saved, or when, changed: the save still starts first and the list is
+  // rebuilt only after it lands, so the row for the item just edited is right.
   function leaveChecklistScreen(){
-    if (!dirty){
-      return populateItemList().then(function(){ showScreen("Items"); });
+    function backToItems(saveFirst){
+      var endTimer = perfStart(saveFirst ? "back: saved + list refreshed" : "back: list refreshed");
+      itemListEl.classList.add("refreshing");
+      showScreen("Items");
+      var savedP = saveFirst ? flushPendingSave() : Promise.resolve();
+      return savedP.then(function(){ return populateItemList(); }).then(function(){
+        itemListEl.classList.remove("refreshing");
+        endTimer();
+      }, function(err){
+        itemListEl.classList.remove("refreshing");
+        endTimer("failed");
+        console.error("Refreshing the items list failed:", err);
+      });
     }
+    if (!dirty) return backToItems(false);
     return showLeaveConfirm().then(function(choice){
       if (choice === "cancel") return; // stay put, nothing changes
       if (choice === "discard"){
         dirty = false; // pending edit is being thrown away, not saved
-        return populateItemList().then(function(){ showScreen("Items"); });
+        return backToItems(false);
       }
-      return flushPendingSave().then(function(){
-        return populateItemList();
-      }).then(function(){ showScreen("Items"); });
+      return backToItems(true);
     });
   }
 
