@@ -143,7 +143,7 @@
 // a "machined" record ahead of their own sign-off flows, an expected
 // consequence of this gate rather than a regression.
 var ICON_VERSION = "v1";
-var CACHE_NAME = "utzline-manufacture-itp-cache-v12";
+var CACHE_NAME = "utzline-manufacture-itp-cache-v14";
 
 var PRECACHE_URLS = [
   "./",
