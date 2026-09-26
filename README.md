@@ -1,10 +1,18 @@
 # UTZLINE Manufacture ITP — installable app
 
-**Current version: v15** (its own independent version line, separate from
+**Current version: v16** (its own independent version line, separate from
 Site Measure/Viewer's and from Install ITP's — bump this line, and add a
 dated entry below, every time a new build ships. See
 `next-version-notes.md` in the project for the full per-version changelog
 if a gap ever needs filling in.)
+
+**v16 (2026-09-26):** Status icon change — Andrew, verbatim: "change in
+manufacture to this 🔨 and machined to this 🪚." `joineryStatusIcon` and
+the plan-marker `joineryDisplayIcon` both updated (`in_manufacture`: 🏭 →
+🔨; `machined`: ⚙️ → 🪚); no other status icon changed. The
+`notMachinedBanner` text ("Not yet marked Machined…") also spelled the old
+gear icon out literally — updated to 🪚 to match. `service-worker.js`
+cache → `utzline-manufacture-itp-cache-v16`.
 
 **v15 (2026-09-25):** the Install ITP v26–v35 port. Andrew: "ok now rebuild the manufacturer and delivery itps to suit all these updates (relevant to their own itps.)" — everything Install ITP gained today that applies to this app, ported with the same design and the same tests; see Install ITP's own README entries v26–v35 for each item's full rationale (Andrew's tablet numbers, the "fewer calls beats smaller calls" finding, etc.). In this app:
 
