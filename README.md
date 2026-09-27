@@ -1,10 +1,12 @@
 # UTZLINE Manufacture ITP — installable app
 
-**Current version: v20** (its own independent version line, separate from
+**Current version: v21** (its own independent version line, separate from
 Site Measure/Viewer's and from Install ITP's — bump this line, and add a
 dated entry below, every time a new build ships. See
 `next-version-notes.md` in the project for the full per-version changelog
 if a gap ever needs filling in.)
+
+**v21 (2026-09-27):** Hides the **Schedule Backups** folder from the project list. Scheduler v29 now keeps its daily spreadsheet backups in that folder, directly in the main Projects folder (Andrew: *"a schedule backups folder directly in the main folder ... I meant in the main folder. Not the individual projects folder."*). Every app lists every folder in the main folder as a project, so each one now leaves that folder out: `isReservedRootFolderName`, the same one-line rule in every app. Tested across all 11 apps by `pdftest-projects/run_schedule_backups_folder_hidden.js`, which fails on every app's previous build and passes on the new ones.
 
 **v20 (2026-09-27):** "Sub orders" on the checklist screen. Andrew, verbatim: *"ok now we need all joinery summary pages to show the associated orders. with the option to mark them as recieved. the main schedule also needs a mark as received button for orders. on the schedule."* This app's own joinery item page — the checklist screen — is its "joinery summary page"; the main schedule's own "mark as received" button is separate work elsewhere.
 

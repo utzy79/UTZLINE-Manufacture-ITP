@@ -2763,8 +2763,14 @@ img, svg, canvas{ -webkit-user-drag:none; -webkit-touch-callout:none; user-selec
 
   /* ============================== project list ============================== */
   var projectListEl = document.getElementById("projectListEl");
+  /* (2026-09-27) "Schedule Backups" -- Scheduler's daily spreadsheet
+     backups, kept directly in the main Projects folder -- isn't a project,
+     so it's left out of the project list (the same one-line rule is in
+     every app in the family). */
+  function isReservedRootFolderName(name){ return String(name || "").trim().toLowerCase() === "schedule backups"; }
   function populateProjectList(){
     return listSubdirNames(state.rootHandle).then(function(names){
+      names = names.filter(function(n){ return !isReservedRootFolderName(n); });
       projectListEl.innerHTML = "";
       if (!names.length){
         projectListEl.innerHTML = '<div class="empty-note">No projects found in this folder yet — create one in Site Measure first.</div>';

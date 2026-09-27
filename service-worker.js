@@ -210,7 +210,8 @@
 // readSubOrdersForItem/renderSubOrdersSection comments for the full
 // design. New run_manufacture_itp_sub_orders.js; full suite green.
 var ICON_VERSION = "v1";
-var CACHE_NAME = "utzline-manufacture-itp-cache-v20";
+// v21 (2026-09-27): "Schedule Backups" folder hidden from the project list.
+var CACHE_NAME = "utzline-manufacture-itp-cache-v21";
 
 var PRECACHE_URLS = [
   "./",
