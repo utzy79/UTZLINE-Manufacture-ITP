@@ -142,8 +142,46 @@
 // photos.js and run_manufacture_itp_status_signoff.js both updated to seed
 // a "machined" record ahead of their own sign-off flows, an expected
 // consequence of this gate rather than a regression.
+// v17 (2026-09-26): Two items land together (per the standing "one version
+// bump, not a tiny point release" precedent -- the icon fix was code-
+// complete and held since v16 specifically to ship with this one).
+// (a) Status icon revert (NEXT_RUN_NOTES item 2, held from the 2026-09-26
+// icon-sweep round): `joineryStatusIcon`/`joineryDisplayIcon`'s `machined`
+// (🪚 → ⚙️) and `in_manufacture` (🔨 → 🏭) cases reverted to what they were
+// before that round, and `notMachinedBanner`'s own live text (which spelled
+// the old saw icon out literally) updated to match ("⚙️ Not yet marked
+// Machined…"). (b) PIN-gated sign-offs (NEXT_RUN_NOTES item 12) -- Andrew,
+// verbatim: "pin entry required for sign offs. stopping anyone from
+// randomly signing off under another users name." Per Andrew's own scoping
+// for this app -- the "doer" role doesn't get a PIN -- the builder sign-off
+// stays exactly as it was (free-text name, no PIN). The Metro Factory /
+// Workshop Supervisor sign-off's free-text name field is replaced by the
+// shared name+PIN registry's own picker (same mechanism as Install ITP v38 /
+// Delivery ITP v17): picking a name opens the numberpad, verified against
+// that name's own PIN before it's accepted; wrong PIN shakes and clears,
+// Cancel/wrong-PIN revert to whatever was last actually committed. Nothing
+// is removed -- both signatures are still required to sign off, and the
+// machined-gate stroke logic (unique to this app) is untouched. Registry
+// names are cached in memory for the same reason as the sibling apps (a
+// checklist open/render is a hot path here too). Six Playwright test files
+// in pdftest-projects updated for the new PIN flow (run_manufacture_itp_
+// auto_export_on_signoff.js, _machined_gate.js, _no_answer_gating_and_
+// photos.js, _status_signoff.js, smoke_manufacture_itp_v1_e2e.js,
+// smoke_manufacture_itp_v2_flat_project.js); full 10-file suite green.
+// v18 (2026-09-26): "Go to location"/"Go to pin" zoom feel now matches
+// UTZLINE Projects (general note, not scoped to one app) -- Andrew's own
+// final word after a dictation trail: "view on plan in projects is
+// actually the perfect zoom level." centrePlanOn's single-marker jump now
+// uses Projects' own Math.max(planView.scale, 1) (at least native 1:1
+// pixel scale), replacing the old fitScale*5 multiplier, which zoomed to a
+// different absolute level depending on a level's own image resolution.
+// PLAN_FOCUS_ZOOM is kept as the multi-marker bounding-box zoom CAP (the
+// "Go to room" case, a different feature) -- untouched.
+// run_manufacture_itp_room_list_alpha_and_marker_menu.js updated (stale
+// fitScale*5 assertion replaced with a >=1 native-scale check); full
+// 12-file suite green.
 var ICON_VERSION = "v1";
-var CACHE_NAME = "utzline-manufacture-itp-cache-v16";
+var CACHE_NAME = "utzline-manufacture-itp-cache-v18";
 
 var PRECACHE_URLS = [
   "./",

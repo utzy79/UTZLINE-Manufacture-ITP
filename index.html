@@ -334,7 +334,7 @@ textarea.notes-box{
 .so-row{ display:flex; gap:10px; flex-wrap:wrap; margin-bottom:8px; }
 .so-field{ flex:1; min-width:140px; }
 .so-field label{ display:block; font-size:11px; color:var(--text-secondary); margin-bottom:3px; }
-.so-field input{
+.so-field input, .so-field select{
   width:100%; font:inherit; font-size:13px; padding:7px 9px; border-radius:6px;
   border:1px solid var(--border-strong); background:var(--surface-0); color:var(--text-primary);
 }
@@ -688,7 +688,7 @@ img, svg, canvas{ -webkit-user-drag:none; -webkit-touch-callout:none; user-selec
     <!-- New (2026-09-23) -- see joineryStatusRank's own comment. Unobtrusive
          heads-up shown/hidden by refreshMachinedBanner, so an operator isn't
          surprised only at the moment they try to sign. -->
-    <div class="machined-banner" id="notMachinedBanner" hidden>🪚 Not yet marked Machined — sign-off will be blocked until this item is marked Machined in the Machine Schedule app.</div>
+    <div class="machined-banner" id="notMachinedBanner" hidden>⚙️ Not yet marked Machined — sign-off will be blocked until this item is marked Machined in the Machine Schedule app.</div>
     <div class="signoff-block" data-role="builder">
       <div class="so-role">Joinery Builder</div>
       <div class="so-row">
@@ -698,10 +698,10 @@ img, svg, canvas{ -webkit-user-drag:none; -webkit-touch-callout:none; user-selec
       <div class="sig-pad-wrap"><canvas class="sig-canvas"></canvas><div class="sig-pad-empty-hint">Sign here</div></div>
       <div class="sig-actions"><button class="mbtn sig-clear-btn">Clear signature</button></div>
     </div>
-    <div class="signoff-block" data-role="supervisor">
+    <div class="signoff-block" data-role="supervisor" data-pin-gated="true">
       <div class="so-role">Metro Factory / Workshop Supervisor</div>
       <div class="so-row">
-        <div class="so-field"><label>Name</label><input type="text" class="so-name" autocomplete="off"></div>
+        <div class="so-field"><label>Name</label><select class="so-name-select" aria-label="Supervisor name"></select></div>
         <div class="so-field"><label>Date</label><input type="date" class="so-date"></div>
       </div>
       <div class="sig-pad-wrap"><canvas class="sig-canvas"></canvas><div class="sig-pad-empty-hint">Sign here</div></div>
@@ -1310,8 +1310,8 @@ img, svg, canvas{ -webkit-user-drag:none; -webkit-touch-callout:none; user-selec
       case "installed": return "🏆";
       case "delivered": return "🚚";
       case "manufactured": return "📦";
-      case "machined": return "🪚";
-      case "in_manufacture": return "🔨";
+      case "machined": return "⚙️";
+      case "in_manufacture": return "🏭";
       case "measured": return "📏";
       default: return "";
     }
@@ -1324,8 +1324,8 @@ img, svg, canvas{ -webkit-user-drag:none; -webkit-touch-callout:none; user-selec
     if (rec.status === "installed") return "🏆";
     if (rec.status === "delivered") return "🚚";
     if (rec.status === "manufactured") return "📦";
-    if (rec.status === "machined") return "🪚";
-    if (rec.status === "in_manufacture") return "🔨";
+    if (rec.status === "machined") return "⚙️";
+    if (rec.status === "in_manufacture") return "🏭";
     if (rec.jobNote) return "🛠️";
     if (rec.status === "measured") return "📏";
     return "";
@@ -2184,7 +2184,24 @@ img, svg, canvas{ -webkit-user-drag:none; -webkit-touch-callout:none; user-selec
     var text = csvStringifyRows(lines);
     return state.rootHandle.getFileHandle(USERS_CSV_NAME, { create: true }).then(function(fh){
       return fh.createWritable();
-    }).then(function(w){ return w.write(text).then(function(){ return w.close(); }); });
+    }).then(function(w){ return w.write(text).then(function(){ return w.close(); }); }).then(function(){
+      cachedUsersRows = null; // (2026-09-26) invalidate -- see getUsersRowsCached
+    });
+  }
+  // (2026-09-26, PIN-gated sign-offs) A plain checklist open/close is a HOT
+  // path this app has spent several rounds keeping cheap -- populating the
+  // sign-off name <select> on every single render must NOT cost a fresh
+  // utzline-users.csv read every time. Cached in memory, refreshed once at
+  // boot/root-pick (populateIdentitySelector already reads it there --
+  // piggy-backs on that read rather than a separate one) and invalidated by
+  // writeUsersCsv whenever a name/PIN is actually added. The PIN itself is
+  // still verified against a FRESH read (see the sign-off block's own
+  // openNumberpad verify()) -- only the dropdown's OPTION LIST uses this
+  // cache. Ported verbatim from Install ITP v38 / Delivery ITP v17.
+  var cachedUsersRows = null;
+  function getUsersRowsCached(){
+    if (cachedUsersRows) return Promise.resolve(cachedUsersRows);
+    return readUsersCsv().then(function(rows){ cachedUsersRows = rows; return rows; });
   }
   function findUserRowCI(rows, name){
     var n = String(name || "").trim().toLowerCase();
@@ -2352,6 +2369,7 @@ img, svg, canvas{ -webkit-user-drag:none; -webkit-touch-callout:none; user-selec
   function populateIdentitySelector(){
     if (!identitySelector) return Promise.resolve();
     return readUsersCsv().then(function(rows){
+      cachedUsersRows = rows; // (2026-09-26) piggy-back this boot-time read into the sign-off picker's own cache
       var names = rows.map(function(r){ return r.name; }).filter(Boolean);
       names.sort(function(a, b){ return a.toLowerCase().localeCompare(b.toLowerCase()); });
       identitySelector.innerHTML = "";
@@ -3317,7 +3335,7 @@ img, svg, canvas{ -webkit-user-drag:none; -webkit-touch-callout:none; user-selec
     });
   }
 
-  /* ---- Status badges (📏/🔨/🪚/📦/🚚/🏆 from the shared, event-sourced
+  /* ---- Status badges (📏/🏭/⚙️/📦/🚚/🏆 from the shared, event-sourced
      joinery status) -- Install ITP round 5 (2026-09-25). Andrew's v29
      screenshot there: "status badges resolved 11095 ms (cancelled, 50 of 60
      items have history)" -- fifty items each needing their own folder
@@ -3810,18 +3828,27 @@ img, svg, canvas{ -webkit-user-drag:none; -webkit-touch-callout:none; user-selec
     hideMarkerMenu();
     if (t) openViewJobNoteDialogFor(state.levelName, t.room, t.code);
   });
-  // Centre the plan view on a world point at a comfortable zoom (at least
-  // the fit scale, up to a close-in view), keeping the animation simple.
-  // Andrew (2026-09-25): "when it goes to joinery / room location, it needs
-  // to zoom in closer" -- at least 5x the fit-to-screen scale (a marker
-  // reads at roughly 100-plus px across), never zooming OUT from a closer
-  // view the user already had.
+  // Centre the plan view on a world point at a comfortable zoom, keeping
+  // the animation simple. Andrew's own dictation trail, 2026-09-26 (general
+  // note, not scoped to this app): "goto location needsd to be zoomed in
+  // even closer than it is now" -> "the itp zoom works well, but needs to
+  // be closer again" -> "match the other zooms to that" -> SUPERSEDED --
+  // "view on plan in projects is actually the perfect zoom level." Final
+  // reference is UTZLINE Projects, not this app's own old multiplier --
+  // ported verbatim from Projects' openPlanCanvasForLevel marker-jump
+  // branch: at least native 1:1 pixel scale (Math.max(scale, 1)), never
+  // zooming OUT from a closer view the user already had. This replaces the
+  // old `fitScale * PLAN_FOCUS_ZOOM` multiplier, which zoomed to a
+  // different absolute level depending on a level's own image resolution
+  // instead of a fixed pixel-for-pixel feel matching Projects.
+  // PLAN_FOCUS_ZOOM is kept -- the multi-marker bounding-box fit below (a
+  // different feature, "Go to room") still uses it as a zoom cap,
+  // untouched by this change.
   var PLAN_FOCUS_ZOOM = 5;
   function centrePlanOn(wx, wy){
     var rect = planViewportEl.getBoundingClientRect();
     var vw = rect.width || 300, vh = rect.height || 300;
-    var fitScale = Math.min(vw / currentLevelPlan.imageW, vh / currentLevelPlan.imageH) * 0.94;
-    planView.scale = clampPlanScale(Math.max(planView.scale, fitScale * PLAN_FOCUS_ZOOM));
+    planView.scale = clampPlanScale(Math.max(planView.scale, 1));
     planView.tx = vw / 2 - wx * planView.scale;
     planView.ty = vh / 2 - wy * planView.scale;
     applyPlanView();
@@ -4240,7 +4267,11 @@ img, svg, canvas{ -webkit-user-drag:none; -webkit-touch-callout:none; user-selec
       notes: "",
       signoff: {
         builder: { name: "", date: "", sig: null },
-        supervisor: { name: "", date: "", sig: null }
+        // (2026-09-26, PIN-gated sign-offs) pinVerified is true only once
+        // the supervisor name was picked from the shared registry and its
+        // PIN was checked correctly at that moment -- the builder role
+        // stays free/un-gated and carries no such field.
+        supervisor: { name: "", date: "", sig: null, pinVerified: false }
       },
       // Photos (2026-09-23) -- {dataUrl, w, h, addedAt}[], each already
       // downscaled/compressed at capture time (see readAndCompressImageFile)
@@ -4434,9 +4465,32 @@ img, svg, canvas{ -webkit-user-drag:none; -webkit-touch-callout:none; user-selec
     rowEls.push({ triButtons: triButtons, commentInput: commentInput });
   });
 
+  function populateSignoffNameSelect(selectEl, currentName){
+    return getUsersRowsCached().then(function(rows){
+      var names = rows.map(function(r){ return r.name; }).filter(Boolean);
+      names.sort(function(a, b){ return a.toLowerCase().localeCompare(b.toLowerCase()); });
+      selectEl.innerHTML = "";
+      var placeholder = document.createElement("option");
+      placeholder.value = ""; placeholder.textContent = "Select name…";
+      selectEl.appendChild(placeholder);
+      names.forEach(function(n){
+        var opt = document.createElement("option");
+        opt.value = n; opt.textContent = n;
+        selectEl.appendChild(opt);
+      });
+      if (currentName && names.indexOf(currentName) === -1){
+        var stale = document.createElement("option");
+        stale.value = currentName; stale.textContent = currentName + " (not in registry)";
+        selectEl.appendChild(stale);
+      }
+      selectEl.value = currentName || "";
+    }, function(){ /* utzline-users.csv not readable yet -- leave just the placeholder */ });
+  }
+
   signoffBlocks.forEach(function(block){
     var role = block.getAttribute("data-role");
-    var nameInput = block.querySelector(".so-name");
+    var pinGated = block.getAttribute("data-pin-gated") === "true";
+    var nameInput = block.querySelector(".so-name, .so-name-select");
     var dateInput = block.querySelector(".so-date");
     var canvas = block.querySelector(".sig-canvas");
     var hint = block.querySelector(".sig-pad-empty-hint");
@@ -4487,18 +4541,60 @@ img, svg, canvas{ -webkit-user-drag:none; -webkit-touch-callout:none; user-selec
       state.currentData.signoff[role].sig = newSig;
       markDirty();
     };
-    nameInput.addEventListener("input", function(){
+    function commitName(name, verified){
       if (!state.currentData) return;
-      state.currentData.signoff[role].name = nameInput.value;
-      // Auto-populate today's date the moment a name is first typed, but
-      // never override a date someone deliberately set (or changed) --
+      state.currentData.signoff[role].name = name;
+      if (pinGated) state.currentData.signoff[role].pinVerified = !!verified;
+      // Auto-populate today's date the moment a name is first committed,
+      // but never override a date someone deliberately set (or changed) --
       // only fills in while the field is still empty.
-      if (nameInput.value.trim() && !dateInput.value){
+      if (name && !dateInput.value){
         dateInput.value = todayISO();
         state.currentData.signoff[role].date = dateInput.value;
       }
       markDirty();
-    });
+    }
+    var ref = { pad: pad, nameInput: nameInput, dateInput: dateInput, pinGated: pinGated, lastValue: "" };
+    signaturePads[role] = ref;
+    // PIN entry required for sign-offs (2026-09-26) -- Andrew: "pin entry
+    // required for sign offs. stopping anyone from randomly signing off
+    // under another users name." Picking a name from the registry
+    // immediately opens the numberpad to verify THAT name's own PIN before
+    // it's accepted (same mechanism as the device identity selector's own
+    // name+PIN flow) -- a wrong PIN or Cancel reverts the select back to
+    // whatever was last actually committed, never left on the picked-but-
+    // unverified option. The builder role is untouched (free text) per
+    // Andrew: "installer wont have a pin, just the site supervisor..." (the
+    // same "doer" exemption applies to this app's builder role). Ported
+    // verbatim from Install ITP v38 / Delivery ITP v17.
+    if (pinGated){
+      nameInput.addEventListener("change", function(){
+        var picked = nameInput.value;
+        if (!picked){ ref.lastValue = ""; commitName("", false); return; }
+        openNumberpad({
+          title: "Enter PIN",
+          subtitle: "for “" + picked + "”",
+          verify: function(pin){
+            return readUsersCsv().then(function(rows){
+              var row = findUserRowCI(rows, picked);
+              return !!(row && row.pin === pin);
+            });
+          }
+        }).then(function(pin){
+          if (pin === null){ nameInput.value = ref.lastValue; return; }
+          ref.lastValue = picked;
+          commitName(picked, true);
+        }).catch(function(err){
+          console.error("Checking sign-off PIN failed:", err);
+          showToast("Couldn't read utzline-users.csv.");
+          nameInput.value = ref.lastValue;
+        });
+      });
+    } else {
+      nameInput.addEventListener("input", function(){
+        commitName(nameInput.value, false);
+      });
+    }
     dateInput.addEventListener("input", function(){
       if (state.currentData) state.currentData.signoff[role].date = dateInput.value;
       markDirty();
@@ -4508,7 +4604,6 @@ img, svg, canvas{ -webkit-user-drag:none; -webkit-touch-callout:none; user-selec
       if (state.currentData) state.currentData.signoff[role].sig = null;
       markDirty();
     });
-    signaturePads[role] = { pad: pad, nameInput: nameInput, dateInput: dateInput };
   });
 
   /* ---- machined gate (2026-09-23) -- see joineryStatusRank's own comment
@@ -4869,13 +4964,25 @@ img, svg, canvas{ -webkit-user-drag:none; -webkit-touch-callout:none; user-selec
     });
     notesEl.value = data.notes || "";
     renderPhotoGallery(data);
-    ["builder", "supervisor"].forEach(function(role){
+    // (2026-09-26) Object.keys(signaturePads) rather than a hardcoded
+    // ["builder","supervisor"] list, matching Install ITP's own fix -- the
+    // builder role stays a plain free-text input, the supervisor role is
+    // now PIN-gated and needs the select populated from the shared
+    // name+PIN registry instead of a plain value assignment.
+    Object.keys(signaturePads).forEach(function(role){
       var ref = signaturePads[role];
-      ref.nameInput.value = data.signoff[role].name || "";
-      ref.dateInput.value = data.signoff[role].date || "";
+      var so = (data.signoff && data.signoff[role]) || { name: "", date: "", sig: null };
+      if (ref.pinGated){
+        populateSignoffNameSelect(ref.nameInput, so.name || "").then(function(){
+          ref.lastValue = so.name || "";
+        });
+      } else {
+        ref.nameInput.value = so.name || "";
+      }
+      ref.dateInput.value = so.date || "";
       ref.pad.resize();
       ref.pad.clear();
-      ref.pad.loadFromDataURL(data.signoff[role].sig);
+      ref.pad.loadFromDataURL(so.sig);
     });
   }
 
@@ -4897,7 +5004,7 @@ img, svg, canvas{ -webkit-user-drag:none; -webkit-touch-callout:none; user-selec
     checklistLocked = !!locked;
     screenChecklistEl.classList.toggle("locked", checklistLocked);
     checklistLockedBanner.hidden = !checklistLocked;
-    screenChecklistEl.querySelectorAll("input, textarea, #checkRowsEl button").forEach(function(el){
+    screenChecklistEl.querySelectorAll("input, select, textarea, #checkRowsEl button").forEach(function(el){
       if (el.id === "photoFileInput") return;
       el.disabled = checklistLocked;
     });
