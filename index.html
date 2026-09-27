@@ -557,16 +557,17 @@ img, svg, canvas{ -webkit-user-drag:none; -webkit-touch-callout:none; user-selec
   <div class="screen" id="screenProjects">
     <h2>Projects</h2>
     <p class="hint">Choose a project to open its levels, or pick a different Projects folder.</p>
+    <!-- Company logo (2026-09-27): read-only here -- Andrew, verbatim:
+         "change company logo should only be visable in the projects app, in
+         every other app it should load the one chosen in projects." The
+         old Insert/Change/Remove UI (a device-local logo, independent of
+         whatever Projects had set) is gone; this now just shows whatever
+         is currently set in UTZLINE Projects, kept live via loadCompanyLogo(). -->
     <div class="logo-setting-row">
       <img class="logo-thumb" id="companyLogoThumb" style="display:none;" alt="Company logo">
       <div class="logo-thumb empty" id="companyLogoThumbEmpty">No logo</div>
-      <div class="logo-setting-text">Company logo, printed in the top-right corner of every exported checklist PDF.</div>
-      <div class="logo-setting-actions">
-        <button class="mbtn" id="insertLogoBtn">Insert logo</button>
-        <button class="mbtn mbtn-danger" id="removeLogoBtn" style="display:none;">Remove</button>
-      </div>
+      <div class="logo-setting-text">Company logo, printed in the top-right corner of every exported checklist PDF. Set in the UTZLINE Projects app.</div>
     </div>
-    <input type="file" id="companyLogoFileInput" accept="image/*" style="display:none;">
     <!-- Shared device identity (UTZLINE Data Standard v1, §6, added v7) --
          reads from/writes to the same "utzline-identity" IndexedDB
          database Site Measure/Viewer's own toolbar button uses -- same
@@ -1804,7 +1805,6 @@ img, svg, canvas{ -webkit-user-drag:none; -webkit-touch-callout:none; user-selec
     });
   }
   var PROJECTS_ROOT_KEY = "projectsRootHandle";
-  var COMPANY_LOGO_KEY = "companyLogoDataUrl";
 
   /* ---- shared device identity (UTZLINE Data Standard v1, §6, added v7) ----
      A SEPARATE tiny IndexedDB database from IDB_NAME above -- deliberately
@@ -2012,44 +2012,32 @@ img, svg, canvas{ -webkit-user-drag:none; -webkit-touch-callout:none; user-selec
   };
 
   /* ============================== company logo (Projects screen) ============================== */
-  // A single device-wide setting (not per-project) -- once inserted, every
-  // exported checklist PDF from here on carries it in the top-right
-  // corner, alongside UTZLINE ITP's own logo in the bottom-right (see
-  // exportChecklistPdf). Stored as a data URL in the same IndexedDB store
-  // as the remembered Projects-root handle; downscaled through a canvas
-  // first so an arbitrary phone photo of a logo doesn't balloon every PDF.
+  // Read-only here since 2026-09-27 -- Andrew, verbatim: "change company
+  // logo should only be visable in the projects app, in every other app it
+  // should load the one chosen in projects." The old per-device Insert/
+  // Change/Remove UI (independent of whatever Projects had set, stored in
+  // this app's own IndexedDB) is gone. Reads the SAME shared
+  // "company-logo.png" file UTZLINE Projects owns, from the Projects root
+  // (state.rootHandle -- the same root utzline-users.csv already comes
+  // from) -- no write path, no device-local copy any more. Still
+  // downscaled through a canvas to an in-memory {url, w, h} (never
+  // persisted) so an arbitrarily large logo file doesn't balloon every PDF
+  // export, and so the natural pixel size is available for aspect-correct
+  // PDF placement (see exportChecklistPdf) without re-decoding there.
   var companyLogoThumb = document.getElementById("companyLogoThumb");
   var companyLogoThumbEmpty = document.getElementById("companyLogoThumbEmpty");
-  var insertLogoBtn = document.getElementById("insertLogoBtn");
-  var removeLogoBtn = document.getElementById("removeLogoBtn");
-  var companyLogoFileInput = document.getElementById("companyLogoFileInput");
 
   function refreshCompanyLogoUI(){
     if (state.companyLogoDataUrl){
       companyLogoThumb.src = state.companyLogoDataUrl;
       companyLogoThumb.style.display = "";
       companyLogoThumbEmpty.style.display = "none";
-      removeLogoBtn.style.display = "";
-      insertLogoBtn.textContent = "Change logo";
     } else {
       companyLogoThumb.style.display = "none";
       companyLogoThumbEmpty.style.display = "flex";
-      removeLogoBtn.style.display = "none";
-      insertLogoBtn.textContent = "Insert logo";
     }
   }
-  // Stored as {url, w, h} rather than a bare data URL -- w/h are the
-  // logo's own natural pixel size (after downscaling), needed to place it
-  // aspect-correct in the PDF export without re-decoding the image there.
-  function loadCompanyLogo(){
-    return idbGet(COMPANY_LOGO_KEY).then(function(stored){
-      state.companyLogoDataUrl = (stored && stored.url) || null;
-      state.companyLogoW = (stored && stored.w) || 0;
-      state.companyLogoH = (stored && stored.h) || 0;
-      refreshCompanyLogoUI();
-    }).catch(function(){ /* no stored logo yet -- fine */ });
-  }
-  function downscaleImageFile(file, maxDim){
+  function downscaleImageBlob(blob, maxDim){
     return new Promise(function(resolve, reject){
       var img = new Image();
       img.onload = function(){
@@ -2063,36 +2051,31 @@ img, svg, canvas{ -webkit-user-drag:none; -webkit-touch-callout:none; user-selec
         URL.revokeObjectURL(img.src);
       };
       img.onerror = function(){ reject(new Error("Couldn't read that image.")); URL.revokeObjectURL(img.src); };
-      img.src = URL.createObjectURL(file);
+      img.src = URL.createObjectURL(blob);
     });
   }
-  insertLogoBtn.addEventListener("click", function(){ companyLogoFileInput.click(); });
-  companyLogoFileInput.addEventListener("change", function(){
-    var file = companyLogoFileInput.files && companyLogoFileInput.files[0];
-    companyLogoFileInput.value = "";
-    if (!file) return;
-    downscaleImageFile(file, 500).then(function(result){
-      return idbSet(COMPANY_LOGO_KEY, result).then(function(){
-        state.companyLogoDataUrl = result.url;
-        state.companyLogoW = result.w;
-        state.companyLogoH = result.h;
-        refreshCompanyLogoUI();
-        showToast("Company logo saved.");
-      });
-    }).catch(function(err){
-      console.error("Insert logo failed:", err);
-      showToast("Couldn't use that image — try a different file.");
-    });
-  });
-  removeLogoBtn.addEventListener("click", function(){
-    idbSet(COMPANY_LOGO_KEY, null).then(function(){
+  // Called from afterRootReady() -- needs state.rootHandle, so this can't
+  // run at raw boot any more (there's no Projects folder chosen yet then).
+  // Best-effort: an unreadable/missing file just means "no logo set",
+  // same as before Projects had one.
+  function loadCompanyLogo(){
+    if (!state.rootHandle) return Promise.resolve();
+    return state.rootHandle.getFileHandle("company-logo.png", { create: false }).then(function(fh){
+      return fh.getFile();
+    }).then(function(file){
+      return downscaleImageBlob(file, 500);
+    }).then(function(result){
+      state.companyLogoDataUrl = result.url;
+      state.companyLogoW = result.w;
+      state.companyLogoH = result.h;
+      refreshCompanyLogoUI();
+    }, function(){
       state.companyLogoDataUrl = null;
       state.companyLogoW = 0;
       state.companyLogoH = 0;
       refreshCompanyLogoUI();
-      showToast("Company logo removed.");
-    }).catch(function(err){ console.error("Remove logo failed:", err); });
-  });
+    });
+  }
 
   /* ---- shared name+PIN registry ("utzline-users.csv") ----
      Ported verbatim from Delivery ITP (2026-09-23), Andrew's reference
@@ -2495,6 +2478,7 @@ img, svg, canvas{ -webkit-user-drag:none; -webkit-touch-callout:none; user-selec
   var reconnectLabel = document.getElementById("reconnectLabel");
   function afterRootReady(){
     populateIdentitySelector(); // needs state.rootHandle to read utzline-users.csv -- best-effort, never blocks
+    loadCompanyLogo(); // needs state.rootHandle to read the shared company-logo.png -- best-effort, never blocks
     return populateProjectList().then(function(){ showScreen("Projects"); });
   }
   function tryRestoreRoot(){
@@ -5752,8 +5736,7 @@ img, svg, canvas{ -webkit-user-drag:none; -webkit-touch-callout:none; user-selec
     document.body.innerHTML = '<main><div class="setup-card"><h2>Browser not supported</h2>' +
       '<p class="hint">UTZLINE Manufacture ITP needs a browser with File System Access support (Chrome, Edge, or the installed Android/desktop app). Please open it there instead.</p></div></main>';
   } else {
-    loadCompanyLogo();
-    tryRestoreRoot();
+    tryRestoreRoot(); // loadCompanyLogo() now runs from afterRootReady() -- needs state.rootHandle
     loadDeviceUserName(); // shared device identity (added v7) -- never blocks boot
   }
 
