@@ -33,6 +33,15 @@
     app never opens or writes the room's own saves/pdfs/backup content.
     LEGACY (folder-based) projects only -- see the flat-project section
     below for a UTZLINE Projects-created project.
+  - <ProjectsRoot>/<Project>/Project Saves/UTZLINE Sub Orders/Orders/<Level> - <Room> - <Joinery Item>.json
+    and .../UTZLINE Sub Orders/Files/<storedName> -- the checklist screen's
+    new "Sub orders" section (2026-09-27), read-only here EXCEPT for one
+    narrow write-back: ticking/unticking "Received" (or changing its date)
+    on an order rewrites that same Orders/ file's received/receivedDate
+    fields only, via a read-modify-write shallow copy -- see
+    renderSubOrdersSection's own comment for the full design. Sub Orders'
+    Inbox/ folder is never touched at all. UTZLINE Sub Orders itself is the
+    only app that ever attaches/detaches an order or writes its file.
 
   ---- Flat-project support (added 2026-09-22) ----
   A project created by UTZLINE Projects v9+ has no real Level/Room
@@ -324,6 +333,34 @@ textarea.notes-box{
   border:1px solid var(--danger); color:var(--danger);
 }
 .machined-banner[hidden]{ display:none; }
+
+/* ---- Sub orders summary (2026-09-27) -- see renderSubOrdersSection's own
+   top comment. Chip colours ported byte-for-byte from UTZLINE Sub Orders'
+   own type chips / UTZLINE Projects' read-only Sub orders card (already
+   validated against the dataviz skill's colour-safety ceiling), so kept
+   as exact hex rather than re-derived from this app's own accent palette;
+   only the neutral custom-type chip is tokenized (this app's own
+   --surface-2/--border-strong/--text-primary) so a 5th+ order type still
+   reads correctly in dark mode without inventing a new hue. ---- */
+.so-type-heading{ font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--text-secondary); margin:14px 0 6px; }
+.so-type-heading:first-child{ margin-top:0; }
+.so-type-chip{ display:inline-flex; padding:3px 10px; border-radius:999px; font-size:11.5px; font-weight:700; white-space:nowrap; }
+.so-type-chip.so-type-steel{ background:#3987e5; color:#fff; }
+.so-type-chip.so-type-upholstery{ background:#d95926; color:#fff; }
+.so-type-chip.so-type-timber{ background:#199e70; color:#fff; }
+.so-type-chip.so-type-aluminium{ background:#c98500; color:#241205; }
+.so-type-chip.so-type-custom{ background:var(--surface-2); color:var(--text-primary); border:1px solid var(--border-strong); }
+.so-order-item{ padding:10px 0; border-top:1px solid var(--border-strong); }
+.so-order-item:first-child{ border-top:none; }
+.so-order-item-head{ display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; }
+.so-order-item-date{ font-size:12px; color:var(--text-secondary); font-weight:600; }
+.so-order-item-meta{ font-size:12px; color:var(--text-secondary); margin-top:4px; }
+.so-order-item-notes{ font-size:13px; margin:6px 0 0; white-space:pre-wrap; }
+.so-received-row{ display:flex; align-items:center; gap:8px; margin-top:8px; font-size:12.5px; cursor:pointer; }
+.so-received-row input[type="date"]{ font:inherit; font-size:12.5px; padding:4px 7px; border-radius:6px; border:1px solid var(--border-strong); background:var(--surface-0); color:var(--text-primary); }
+.so-order-item.so-order-item-received .so-order-item-date{ color:var(--accent); }
+.so-order-item-actions{ margin-top:8px; }
+.so-order-item-actions .mbtn{ font-size:12px; padding:6px 10px; }
 
 /* ---- sign-off ---- */
 .signoff-block{
@@ -720,6 +757,14 @@ img, svg, canvas{ -webkit-user-drag:none; -webkit-touch-callout:none; user-selec
       <button class="mbtn" id="addPhotoBtn">Add photo</button>
       <input type="file" id="photoFileInput" accept="image/*" multiple style="display:none;">
     </div>
+
+    <!-- Sub orders (2026-09-27) -- Andrew: "ok now we need all joinery
+         summary pages to show the associated orders. with the option to
+         mark them as recieved." This checklist screen is this app's own
+         "joinery summary page"; see renderSubOrdersSection's own comment
+         (near readSubOrdersForItem) for the full read/write design. -->
+    <h2 style="font-size:14px; text-transform:uppercase; letter-spacing:.04em; color:var(--text-secondary); margin-top:18px;">Sub orders</h2>
+    <div id="subOrdersListEl"></div>
 
     <!-- Andrew (2026-09-25): "save on the itp should be save and exit, no
          need for export pdf or delete this item buttons, if an itp is
@@ -1690,6 +1735,192 @@ img, svg, canvas{ -webkit-user-drag:none; -webkit-touch-callout:none; user-selec
       return list;
     });
   }
+
+  /* ---- Sub orders (2026-09-27) ----
+     Andrew, verbatim: "ok now we need all joinery summary pages to show
+     the associated orders. with the option to mark them as recieved. the
+     main schedule also needs a mark as received button for orders. on the
+     schedule." This app's own joinery item page (the checklist screen) is
+     the "joinery summary page" here -- a new "Sub orders" section, read
+     from UTZLINE Sub Orders' own Orders/<key>.json.
+
+     Filename convention ("<Level> - <Room> - <Joinery Item>.json") copied
+     from Sub Orders' own orderFileNameFor/sanitizeFileBase. Checked: this
+     app's own sanitizeFileBase (above) uses the identical strip/trim/
+     collapse regex as Sub Orders' own copy -- same filesystem-hostile
+     characters stripped, same leading/trailing "._ " collapse -- so for
+     any real Level/Room/Joinery Id string the two produce byte-identical
+     output. The only differences are the truncation length (80 here vs
+     120 there) and the empty-name fallback word ("item" vs "file"),
+     neither of which a real (non-empty, well under 80 characters) Level/
+     Room/Joinery Id string ever reaches -- so this app's OWN
+     sanitizeFileBase is reused as-is below rather than duplicating Sub
+     Orders' copy.
+
+     CATEGORISED by type: the same fixed steel/upholstery/timber/aluminium
+     order first, then any custom type (Sub Orders' own v4 "+ Add new
+     type…") alphabetically -- identical grouping/colour design to UTZLINE
+     Projects' own read-only Sub orders card, added the same day, which
+     this is deliberately kept in sync with (see this file's own .so-type-*
+     CSS comment). OPENABLE: an Open button resolving the order's own file
+     from Sub Orders' Files/ folder, exactly like openViewJobNoteDialogFor
+     above already does for its own PDFs -- a missing file just hides that
+     one row's Open button, not a failure.
+
+     The one thing that read-only card doesn't have: a "mark as received"
+     checkbox + date per order, writing back into Sub Orders' own
+     Orders/<key>.json -- Andrew's "option to mark them as recieved" needs
+     at least one place that can actually tick it, and a joinery item's own
+     summary page is the obvious one (the main schedule's own "mark as
+     received" button is a separate piece of work, elsewhere). Always
+     re-reads the Orders/ file fresh before writing (never trusts what's
+     already rendered -- another device may have changed it since), finds
+     the one matching order by id, and rebuilds it via a SHALLOW COPY
+     (Object.assign({}, o, {received, receivedDate})) rather than an
+     explicit field list -- exactly the fix Sub Orders' own
+     setOrderReceived got today (v5), after an allowlist that predated its
+     typeLabel field was found to silently drop it on every "mark
+     received". Ticking the checkbox auto-fills today's date if empty and
+     reveals the date field; unticking clears both `received` (false) and
+     `receivedDate` (null); changing the date while ticked re-writes with
+     the new date -- identical interaction to Sub Orders' own View Orders
+     list (its own data-role="received-check" / "received-date" rows).
+
+     Strictly READ-ONLY in Sub Orders' Inbox/ and Files/ folders (this app
+     never creates, moves or deletes anything there) -- the only path this
+     app ever writes through is Orders/<key>.json, and only the
+     received/receivedDate fields of one existing entry at a time.
+
+     Independent of this checklist's own sign-off lock: setChecklistLocked
+     disables every plain <input> on this screen while signed off, but
+     receiving a sub order is a separate concern from the manufacture
+     checklist itself (same reasoning as "View job note" staying live) --
+     see setChecklistLocked's own #subOrdersListEl exclusion below. */
+  // (v20 review fix) Sub Orders' OWN sanitizeFileBase, copied exactly
+  // (120-char cap, "file" fallback). This app's own sanitizeFileBase caps
+  // at 80 and falls back to "item", so a long (>80 char) or blank level/
+  // room/joinery name would otherwise look for a file Sub Orders never
+  // wrote -- the filename has to match what Sub Orders itself wrote.
+  function subOrdersSanitizeFileBase(name){
+    var cleaned = String(name || "")
+      .replace(/[<>:"/\\|?*\x00-\x1f]/g, "")
+      .trim()
+      .replace(/^[._]+|[._\s]+$/g, "");
+    return cleaned.slice(0, 120) || "file";
+  }
+  function subOrdersFileNameFor(levelName, roomName, joineryCode){
+    return subOrdersSanitizeFileBase(levelName) + " - " + subOrdersSanitizeFileBase(roomName) + " - " + subOrdersSanitizeFileBase(joineryCode) + ".json";
+  }
+  // One-time-per-project-open probe (2026-09-27, found by
+  // run_manufacture_itp_round3_back_and_dir_cache.js): getCachedDir's own
+  // rule is that a create:false MISS is never remembered, since the folder
+  // may legitimately appear a moment later from another app -- correct for
+  // most fixed folders, but wrong for a project that has simply never used
+  // Sub Orders at all, where every single checklist open would otherwise
+  // re-walk "Project Saves/UTZLINE Sub Orders" from scratch forever (the
+  // exact "fixed folder paths re-walked on a warm tap" regression that test
+  // guards against). Mirrors isFlatProject()'s own already-accepted
+  // tradeoff: probed once in openProject and cached on state.projectIsFlat
+  // for the rest of this project's session, same limitation (a folder
+  // created by another app mid-session isn't picked up until the project
+  // is reopened) -- acceptable here for the same reason it already is
+  // there. Only guards READS; a write (setSubOrderReceived) only ever runs
+  // against an order the UI is already showing, which can't exist unless
+  // this was already true.
+  function probeSubOrdersRootExists(projectHandle){
+    return projectHandle.getDirectoryHandle("Project Saves", { create: false }).then(function(psH){
+      return psH.getDirectoryHandle("UTZLINE Sub Orders", { create: false });
+    }).then(function(){ return true; }, function(){ return false; });
+  }
+  function getSubOrdersOrdersDir(create){
+    return projectDir(["Project Saves", "UTZLINE Sub Orders", "Orders"], !!create);
+  }
+  function getSubOrdersFilesDir(){
+    return projectDir(["Project Saves", "UTZLINE Sub Orders", "Files"], false);
+  }
+  // Raw read, no file-handle resolution -- used both by the rendered list
+  // (below) and by setSubOrderReceived's own read-modify-write, which has
+  // no use for an Open button's handle.
+  function readRawSubOrders(levelName, roomName, joineryCode){
+    if (!state.subOrdersRootExists) return Promise.resolve([]); // see probeSubOrdersRootExists' own comment
+    return getSubOrdersOrdersDir(false).then(function(dirH){
+      return dirH.getFileHandle(subOrdersFileNameFor(levelName, roomName, joineryCode), { create: false }).then(function(fh){
+        return fh.getFile().then(function(file){ return file.text(); }).then(function(text){
+          var arr = JSON.parse(text);
+          return Array.isArray(arr) ? arr : [];
+        });
+      }, function(){ return []; }); // no Orders/ file for this item yet -- normal, not an error
+    }, function(){ return []; }); // no Orders/ folder at all yet (Sub Orders never used on this project) -- same
+  }
+  function readSubOrdersForItem(levelName, roomName, joineryCode){
+    return readRawSubOrders(levelName, roomName, joineryCode).then(function(orders){
+      if (!orders.length) return orders;
+      return getSubOrdersFilesDir().then(function(filesDirH){
+        return Promise.all(orders.map(function(o){
+          if (!o.storedName) return Object.assign({}, o, { handle: null });
+          return filesDirH.getFileHandle(o.storedName, { create: false }).then(function(fh){
+            return Object.assign({}, o, { handle: fh });
+          }, function(){ return Object.assign({}, o, { handle: null }); });
+        }));
+      }, function(){
+        return orders.map(function(o){ return Object.assign({}, o, { handle: null }); });
+      });
+    }).catch(function(err){
+      console.error("Reading sub orders failed:", err);
+      return [];
+    });
+  }
+  function setSubOrderReceived(levelName, roomName, joineryCode, orderId, received, receivedDate){
+    // (v20 review fix, 2026-09-27) STRICT read-modify-write. The first cut
+    // read through readRawSubOrders, which treats a missing file (or a file
+    // that parses but isn't a list) as [] -- and then wrote that [] back
+    // with create:true, re-creating a file someone had just removed or
+    // wiping every order on the item. Now, per the family's "unreadable is
+    // not empty" rule: NotFound (folder/file/order gone) = write nothing,
+    // say so; any other read/parse failure = retry once after 600 ms, then
+    // "couldn't read (still syncing?) -- nothing was changed", write
+    // nothing. Writes back through the SAME handle it just read -- never
+    // creates the folder or file. Rejections carry .userMessage for the
+    // caller's toast (and the caller undoes the tick).
+    var fileName = subOrdersFileNameFor(levelName, roomName, joineryCode);
+    function soErr(kind, msg){ var e = new Error(msg); e.soKind = kind; e.userMessage = msg; return e; }
+    var GONE_MSG = "That order isn't attached to this item any more — nothing was changed.";
+    var UNREADABLE_MSG = "Couldn't read this item's sub orders (still syncing?) — nothing was changed. Try again in a moment.";
+    function readOnce(){
+      return getSubOrdersOrdersDir(false).then(function(dirH){
+        return dirH.getFileHandle(fileName, { create: false });
+      }).then(function(fh){
+        return fh.getFile().then(function(file){ return file.text(); }).then(function(text){
+          var arr;
+          try{ arr = JSON.parse(text); }catch(e){ throw soErr("unreadable", UNREADABLE_MSG); }
+          if (!Array.isArray(arr)) throw soErr("unreadable", UNREADABLE_MSG);
+          return { fh: fh, arr: arr };
+        });
+      }, function(err){
+        if (err && err.name === "NotFoundError") throw soErr("gone", GONE_MSG);
+        throw soErr("unreadable", UNREADABLE_MSG);
+      });
+    }
+    return readOnce().catch(function(err){
+      if (err && err.soKind === "gone") throw err;
+      return new Promise(function(r){ setTimeout(r, 600); }).then(readOnce);
+    }).then(function(res){
+      var updated = null;
+      var next = res.arr.map(function(o){
+        if (!o || o.id !== orderId) return o;
+        updated = Object.assign({}, o, {
+          received: !!received,
+          receivedDate: received ? (receivedDate || o.receivedDate || todayISO()) : null
+        });
+        return updated;
+      });
+      if (!updated) throw soErr("gone", GONE_MSG);
+      return res.fh.createWritable().then(function(w){
+        return w.write(JSON.stringify(next, null, 2)).then(function(){ return w.close(); });
+      }).then(function(){ return updated; });
+    });
+  }
+
   // Where this app's own checklist/PDF files live for a FLAT project,
   // matching Andrew's own approved Release 3 folder diagram -- one shared
   // folder for every joinery item in the whole project (the filename
@@ -2569,10 +2800,11 @@ img, svg, canvas{ -webkit-user-drag:none; -webkit-touch-callout:none; user-selec
     invalidateDirHandleCache();
     return state.rootHandle.getDirectoryHandle(name).then(function(dirH){
       state.projectHandle = dirH;
-      return Promise.all([readProjectMeta(dirH), isFlatProject(dirH)]);
+      return Promise.all([readProjectMeta(dirH), isFlatProject(dirH), probeSubOrdersRootExists(dirH)]);
     }).then(function(results){
       state.projectMeta = results[0];
       state.projectIsFlat = results[1];
+      state.subOrdersRootExists = results[2];
       document.getElementById("levelsHeading").textContent = "“" + name + "” — levels";
       return populateLevelList();
     }).then(function(){ showScreen("Levels"); }).catch(function(err){
@@ -4823,6 +5055,147 @@ img, svg, canvas{ -webkit-user-drag:none; -webkit-touch-callout:none; user-selec
       photoGalleryEl.appendChild(cell);
     });
   }
+
+  /* ---- Sub orders section rendering (2026-09-27) -- see
+     readSubOrdersForItem's own comment for the full design. ---- */
+  var subOrdersListEl = document.getElementById("subOrdersListEl");
+  var SUB_ORDER_TYPE_ORDER = ["steel", "upholstery", "timber", "aluminium"];
+  var SUB_ORDER_TYPE_LABELS = { steel: "Steel", upholstery: "Upholstery", timber: "Timber", aluminium: "Aluminium" };
+  function isBaseSubOrderType(t){ return SUB_ORDER_TYPE_ORDER.indexOf(t) !== -1; }
+  // Prefer the label Sub Orders itself snapshotted onto the order
+  // (o.typeLabel, its own v4+) so a custom type's real name shows here
+  // without this app needing its own copy of Sub Orders' custom-types
+  // registry -- the hardcoded map above is just the fallback for orders
+  // written before that field existed.
+  function subOrderTypeLabel(o, t){ return o.typeLabel || SUB_ORDER_TYPE_LABELS[t] || t; }
+  // Sub Orders' own plain "YYYY-MM-DD" date fields -- date-only, no
+  // time-of-day, distinct from any timestamp formatter this app already
+  // has for its own `at`/`updatedAt` fields.
+  function formatSubOrderDate(iso){
+    if (!iso) return "";
+    try{
+      var parts = String(iso).slice(0, 10).split("-");
+      var d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+      if (isNaN(d.getTime())) return iso;
+      return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+    }catch(e){ return iso; }
+  }
+  // Called from renderChecklistIntoScreen with state's own current level/
+  // room/joinery-no -- guarded against a fast re-open of a different item
+  // landing its own (older) result on the item now actually on screen.
+  function renderSubOrdersSection(levelName, roomName, joineryCode){
+    var requestKey = joineryItemPageKey(levelName, roomName, joineryCode);
+    subOrdersListEl.innerHTML = "<p class=\"empty-note\">Loading…</p>";
+    return readSubOrdersForItem(levelName, roomName, joineryCode).then(function(orders){
+      if (joineryItemPageKey(state.levelName, state.roomName, state.currentJoineryNo) !== requestKey) return;
+      subOrdersListEl.innerHTML = "";
+      if (!orders.length){
+        subOrdersListEl.innerHTML = "<p class=\"empty-note\">No sub orders attached to this item.</p>";
+        return;
+      }
+      var byType = {};
+      orders.forEach(function(o){
+        var t = o.type || "other";
+        if (!byType[t]) byType[t] = [];
+        byType[t].push(o);
+      });
+      var groupKeys = SUB_ORDER_TYPE_ORDER.filter(function(t){ return byType[t]; })
+        .concat(Object.keys(byType).filter(function(t){ return SUB_ORDER_TYPE_ORDER.indexOf(t) === -1; }).sort());
+      groupKeys.forEach(function(t){
+        var heading = document.createElement("div");
+        heading.className = "so-type-heading";
+        heading.textContent = subOrderTypeLabel(byType[t][0], t) + " (" + byType[t].length + ")";
+        subOrdersListEl.appendChild(heading);
+        byType[t].forEach(function(o){ subOrdersListEl.appendChild(renderSubOrderRow(o, t, levelName, roomName, joineryCode)); });
+      });
+    }).catch(function(err){
+      console.error("Reading sub orders failed:", err);
+      if (joineryItemPageKey(state.levelName, state.roomName, state.currentJoineryNo) === requestKey){
+        subOrdersListEl.innerHTML = "<p class=\"empty-note\">Couldn't load sub orders — try again.</p>";
+      }
+    });
+  }
+  function renderSubOrderRow(o, t, levelName, roomName, joineryCode){
+    var row = document.createElement("div");
+    row.className = "so-order-item" + (o.received ? " so-order-item-received" : "");
+    var chipClass = "so-type-chip " + (isBaseSubOrderType(t) ? "so-type-" + t : "so-type-custom");
+    row.innerHTML =
+      '<div class="so-order-item-head">' +
+        '<span class="' + chipClass + '"></span>' +
+        '<span class="so-order-item-date"></span>' +
+      '</div>' +
+      '<div class="so-order-item-meta" hidden></div>' +
+      '<p class="so-order-item-notes" hidden></p>' +
+      '<label class="so-received-row"><input type="checkbox" class="so-received-check"> Received' +
+        '<input type="date" class="so-received-date" hidden></label>' +
+      '<div class="so-order-item-actions"></div>';
+    row.querySelector(".so-type-chip").textContent = subOrderTypeLabel(o, t);
+    row.querySelector(".so-order-item-date").textContent = "Required by " + (formatSubOrderDate(o.requiredByDate) || "—");
+    var meta = [];
+    if (o.supplier) meta.push(o.supplier);
+    if (o.poNumber) meta.push("PO " + o.poNumber);
+    if (meta.length){
+      var metaEl = row.querySelector(".so-order-item-meta");
+      metaEl.hidden = false;
+      metaEl.textContent = meta.join(" · ");
+    }
+    if (o.notes){
+      var notesEl2 = row.querySelector(".so-order-item-notes");
+      notesEl2.hidden = false;
+      notesEl2.textContent = o.notes;
+    }
+    if (o.handle){
+      var openBtn = document.createElement("button");
+      openBtn.type = "button"; openBtn.className = "mbtn";
+      openBtn.textContent = "Open (" + (o.fileName || "order file") + ")";
+      openBtn.addEventListener("click", function(){
+        o.handle.getFile().then(function(file){
+          var url = URL.createObjectURL(file);
+          window.open(url, "_blank");
+          setTimeout(function(){ URL.revokeObjectURL(url); }, 60000);
+        }).catch(function(err){
+          console.error("Open sub order failed:", err);
+          showToast("Couldn't open that file — try again.");
+        });
+      });
+      row.querySelector(".so-order-item-actions").appendChild(openBtn);
+    }
+    var check = row.querySelector(".so-received-check");
+    var dateInput = row.querySelector(".so-received-date");
+    check.checked = !!o.received;
+    dateInput.value = o.receivedDate || "";
+    dateInput.hidden = !o.received;
+    check.addEventListener("change", function(){
+      var checked = check.checked;
+      dateInput.hidden = !checked;
+      if (checked && !dateInput.value) dateInput.value = todayISO();
+      setSubOrderReceived(levelName, roomName, joineryCode, o.id, checked, dateInput.value).then(function(updated){
+        o.received = updated.received;
+        o.receivedDate = updated.receivedDate;
+        dateInput.value = updated.receivedDate || "";
+        row.classList.toggle("so-order-item-received", !!updated.received);
+        showToast(checked ? "Marked as received." : "Marked as not received.");
+      }).catch(function(err){
+        console.error("Updating received status failed:", err);
+        showToast((err && err.userMessage) || "Couldn't update received status — try again.");
+        check.checked = !checked;
+        dateInput.hidden = checked;
+      });
+    });
+    dateInput.addEventListener("change", function(){
+      if (!check.checked) return;
+      var dateVal = dateInput.value || todayISO();
+      setSubOrderReceived(levelName, roomName, joineryCode, o.id, true, dateVal).then(function(updated){
+        o.received = updated.received;
+        o.receivedDate = updated.receivedDate;
+        dateInput.value = updated.receivedDate || "";
+      }).catch(function(err){
+        console.error("Updating received date failed:", err);
+        showToast((err && err.userMessage) || "Couldn't update the received date — try again.");
+      });
+    });
+    return row;
+  }
   function handleAddedPhotoFiles(files){
     if (!files.length || !state.currentData) return;
     Promise.all(files.map(function(f){ return readAndCompressImageFile(f).catch(function(){ return null; }); })).then(function(results){
@@ -4948,6 +5321,7 @@ img, svg, canvas{ -webkit-user-drag:none; -webkit-touch-callout:none; user-selec
     });
     notesEl.value = data.notes || "";
     renderPhotoGallery(data);
+    renderSubOrdersSection(state.levelName, state.roomName, state.currentJoineryNo);
     // (2026-09-26) Object.keys(signaturePads) rather than a hardcoded
     // ["builder","supervisor"] list, matching Install ITP's own fix -- the
     // builder role stays a plain free-text input, the supervisor role is
@@ -4989,7 +5363,11 @@ img, svg, canvas{ -webkit-user-drag:none; -webkit-touch-callout:none; user-selec
     screenChecklistEl.classList.toggle("locked", checklistLocked);
     checklistLockedBanner.hidden = !checklistLocked;
     screenChecklistEl.querySelectorAll("input, select, textarea, #checkRowsEl button").forEach(function(el){
-      if (el.id === "photoFileInput") return;
+      // Sub orders' own received checkbox/date (2026-09-27) stay live
+      // regardless of this checklist's own sign-off lock -- receiving a
+      // sub order is a separate concern from the manufacture checklist
+      // itself, same reasoning as "View job note" staying live below.
+      if (el.id === "photoFileInput" || el.closest("#subOrdersListEl")) return;
       el.disabled = checklistLocked;
     });
     document.getElementById("addPhotoBtn").disabled = checklistLocked;

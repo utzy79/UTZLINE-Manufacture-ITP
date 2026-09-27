@@ -192,8 +192,25 @@
 // correct) is unchanged, just now sourced from the shared file instead of
 // local storage. Covered by the new
 // run_manufacture_itp_company_logo_readonly.js; full suite green (15/15).
+// v20 (2026-09-27): "Sub orders" on the checklist screen -- Andrew,
+// verbatim: "ok now we need all joinery summary pages to show the
+// associated orders. with the option to mark them as recieved. the main
+// schedule also needs a mark as received button for orders. on the
+// schedule." New section reading UTZLINE Sub Orders' own
+// Project Saves/UTZLINE Sub Orders/Orders/<Level> - <Room> - <Joinery
+// Item>.json, grouped by type (fixed steel/upholstery/timber/aluminium
+// order, then custom types alphabetically, each a coloured chip -- a
+// custom type gets one neutral chip, never a guessed-at colour), openable
+// (its own file, via Sub Orders' Files/ folder), with a per-order
+// "Received" checkbox + date that writes back into that same Orders/
+// file -- read-modify-write, one order at a time, rebuilt via a shallow
+// copy (never an explicit field allowlist, the exact bug just fixed in
+// Sub Orders' own setOrderReceived, v5, same day). Strictly read-only in
+// Sub Orders' Inbox/ and Files/ folders. See index.html's own
+// readSubOrdersForItem/renderSubOrdersSection comments for the full
+// design. New run_manufacture_itp_sub_orders.js; full suite green.
 var ICON_VERSION = "v1";
-var CACHE_NAME = "utzline-manufacture-itp-cache-v19";
+var CACHE_NAME = "utzline-manufacture-itp-cache-v20";
 
 var PRECACHE_URLS = [
   "./",
