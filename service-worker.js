@@ -211,7 +211,8 @@
 // design. New run_manufacture_itp_sub_orders.js; full suite green.
 var ICON_VERSION = "v1";
 // v21 (2026-09-27): "Schedule Backups" folder hidden from the project list.
-var CACHE_NAME = "utzline-manufacture-itp-cache-v21";
+// v22 (2026-09-29): RC 1.0 -- the version is shown as RC 1.0, with a small "RC 1.0" tag on the logo.
+var CACHE_NAME = "utzline-manufacture-itp-cache-v22";
 
 var PRECACHE_URLS = [
   "./",

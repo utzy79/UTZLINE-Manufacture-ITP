@@ -1,10 +1,15 @@
 # UTZLINE Manufacture ITP — installable app
 
-**Current version: v21** (its own independent version line, separate from
+**Current version: v22 (RC 1.0)** (its own independent version line, separate from
 Site Measure/Viewer's and from Install ITP's — bump this line, and add a
 dated entry below, every time a new build ships. See
 `next-version-notes.md` in the project for the full per-version changelog
 if a gap ever needs filling in.)
+
+**v22 (2026-09-29) — RC 1.0.** Andrew: *"ok, now change them all to version RC 1.0. and have that on the logos (small)"*.
+
+- The app is now **RC 1.0** (release candidate 1.0) across the UTZLINE family. A small **RC 1.0** tag sits beside the logo in the header.
+- The build number (v22) still counts up underneath, so installed copies pick up each update. It's also what the Windows installer "Setup RC 1.0" contains.
 
 **v21 (2026-09-27):** Hides the **Schedule Backups** folder from the project list. Scheduler v29 now keeps its daily spreadsheet backups in that folder, directly in the main Projects folder (Andrew: *"a schedule backups folder directly in the main folder ... I meant in the main folder. Not the individual projects folder."*). Every app lists every folder in the main folder as a project, so each one now leaves that folder out: `isReservedRootFolderName`, the same one-line rule in every app. Tested across all 11 apps by `pdftest-projects/run_schedule_backups_folder_hidden.js`, which fails on every app's previous build and passes on the new ones.
 
