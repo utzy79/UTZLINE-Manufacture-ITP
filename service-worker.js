@@ -215,7 +215,9 @@ var ICON_VERSION = "v1";
 // v23 (2026-09-29): RC 1.0 -- "Projects on this device": pick the jobs this device works on; sync help; get ready for offline.
 // v24 (2026-09-29): RC 1.0 -- 🏭 for a job note too; every save retried + checked; no "still syncing?" guesses.
 // v25 (2026-09-29): RC 1.0 -- every checklist save also writes its own change file; opening reads them back (two tablets saving offline both keep their changes).
-var CACHE_NAME = "utzline-manufacture-itp-cache-v25";
+// v26 (2026-09-30): RC 1.0 -- "Get ready for offline" is a quick check on an Android tablet (the sync app already keeps every file here); "Open every file (slow)" still does the full one.
+// v27 (2026-09-30): RC 1.0 -- event layout v2: status / schedule / cut / completion / cutting file / note records are one folder per LEVEL (Project Saves/UTZLINE Events/<branch>/<Level>/); old per-item folders are still read. PDF libraries load on first use.
+var CACHE_NAME = "utzline-manufacture-itp-cache-v27";
 
 var PRECACHE_URLS = [
   "./",
