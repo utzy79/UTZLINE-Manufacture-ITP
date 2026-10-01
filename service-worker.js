@@ -220,7 +220,8 @@ var ICON_VERSION = "v1";
 // v28 (2026-09-30): RC 1.0 -- sign in on open (tablets / phones), change-folder button.
 // v29 (2026-09-30): RC 1.0 -- day / night mode, the room in the marker menu, the builder's logo on the level heading and the checklist PDF.
 // v30 (2026-10-01): RC 1.0 -- Scan QR code + the item link from the Viewer's floor plan export
-var CACHE_NAME = "utzline-manufacture-itp-cache-v30";
+// v31 (2026-10-01): RC 1.0 -- Windows' 260-character path limit: shorter record names in the event store (see README)
+var CACHE_NAME = "utzline-manufacture-itp-cache-v31";
 
 var PRECACHE_URLS = [
   "./",
