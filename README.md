@@ -1,10 +1,28 @@
 # UTZLINE Manufacture ITP — installable app
 
-**Current version: v34 (RC 1.0)** (its own independent version line, separate from
+**Current version: v37 (RC 1.0)** (its own independent version line, separate from
 Site Measure/Viewer's and from Install ITP's — bump this line, and add a
 dated entry below, every time a new build ships. See
 `next-version-notes.md` in the project for the full per-version changelog
 if a gap ever needs filling in.)
+
+**v37 (2026-10-02) — RC 1.0: builder logo on the top bar, logos folder, reversed Machined.**
+
+- **Builder logo at the far right of the top bar** (Andrew: *"builder logo on the far right of the top bar"*): one logo in the header, just left of the day / night button, shown only while a project is open and the builder has a logo (it is hidden on the project list).
+- **Company and builder logos live in a `logos` folder** at the Projects root (Andrew: *"move the company and builders logos into a logos folder"*). Every app reads `logos/` first and falls back to the old root files, so nothing breaks before the move; UTZLINE Projects writes only into `logos/` and copies the root files across once (copies -- nothing is moved or deleted). `logos` is never listed as a project.
+- **Reversed Machined** (Andrew: *"if something is flagged as machined, but then the machining gets reversed, the flags need to be reversed also"*): the status now honours the Machine Schedule's `statusRetract` event -- undo a cut there and this app drops the item back to its earlier stage too (history shows the entry struck through, then "reversed"). Later re-machining counts normally.
+- **Dark mode controls**: drop-downs, their open lists, text boxes and buttons that no style had touched now get a real dark background and readable text (one shared rule), and the day / night contrast was swept for white-on-pale text.
+
+**v36 (2026-10-02) — Full rework tracking, same as the Install ITP: Add rework / Open rework (n) on every item bar, room flag, Outstanding reworks page, rework in the marker menu, and the red QR code opens Add rework.**
+
+The rework screens, event-sourced rework log, item-bar button, room flag, Outstanding reworks page and marker-menu "Open rework" are ported from Install ITP. The red "Add rework here" QR code on an exported plan now goes straight to this item's Add rework screen (it used to say this app doesn't track rework). Every rework carries `createdApp` ("UTZLINE Manufacture ITP"). Sign-in cover inlined.
+
+**v35 (2026-10-01) — RC 1.0: ITP header logos, Save and exit, builder logo on project rows, Add rework here.**
+
+- **Save and exit:** the checklist page's button says **Save and exit** in every state (it said just *Exit* once the item was signed off).
+- **PDF header:** the builder's logo is **25% smaller** and sits **far left**; the Metro Joinery (company) logo is **centred**; the UTZLINE mark stays top right (Andrew: *"builder logo is way too big. make it 25% smaller and to the far left, with our logo in the centre of the header"*). The **PHOTOS** heading now sits **below** the logo band on photo pages, so the logos no longer cover it.
+- **Project rows:** the builder's logo at the far right of each project row, scaled to the row (Andrew: *"builders logo to go on the far right of each project toolbar scaled to fit the toolbar"*).
+- **The plan PDF export** (Site Measure / Viewer) has a **second QR code**, dark red, at the bottom right of each page under the first one's column and labelled **Add rework here** (Andrew: *"another qr code that takes you to the add rework option ... bottom of the page under right aligned with the current one and a different colour (red if possible) labeled add rework here"*). It carries the same item link with `a=rework`; scanning it (or opening it from the phone's camera) in the Install or Delivery ITP goes straight to that item's Add rework screen; the Manufacture ITP (no rework screen) opens the item and says rework is added in the Install or Delivery ITP.
 
 **v34 (2026-10-01) — RC 1.0: code-only file names -- joinery codes, not descriptions, in every file and folder name (path-limit round, fourth build).**
 
