@@ -223,11 +223,13 @@ var ICON_VERSION = "v1";
 // v31 (2026-10-01): RC 1.0 -- Windows' 260-character path limit: shorter record names in the event store (see README)
 // v36 (2026-10-02): RC 1.0 -- full rework parity with Install ITP (item-bar button, room flag, Outstanding reworks, marker menu, red QR), createdApp, sign-in cover
 // v37 (2026-10-02): RC 1.0 -- builder logo far right of the top bar, logos folder, reversed Machined, dark-mode controls.
-var CACHE_NAME = "utzline-manufacture-itp-cache-v45";
+var CACHE_NAME = "utzline-manufacture-itp-cache-v50";
 
 var PRECACHE_URLS = [
   "./",
   "./index.html",
+  "./pdf.min.js", // (2026-10-04) the in-app PDF viewer (shared/pdf-view)
+  "./pdf.worker.min.js",
   "./manifest.json?v=" + ICON_VERSION,
   "./jspdf.umd.min.js",
   "./jsqr.min.js",
