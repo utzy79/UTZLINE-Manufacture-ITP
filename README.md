@@ -1,6 +1,6 @@
 # UTZLINE Manufacture ITP — installable app
 
-**Current version: v50 (RC 1.0)** (its own independent version line, separate from
+**Current version: v59 (RC 1.0)** (its own independent version line, separate from
 
 **v48 (2026-10-04): item numbers, everything split by room / item.** The Summary page and the ITP PDF show the item's number ("JG.33.1 - 001"). Every joinery item has its own 3-digit number (001, 002 ... given once by Projects, never reused) and it follows the code in the item's file name ("JG.33.1 - 001"). Every save is split by level, room and item, even when a room has only one item: `Project Saves\RW\<Level>\<Room>\<item>\` (+ `Log\`), `PDFs\RW\<Level>\<Room>\<item>\`, `Project Saves\UTZLINE ITP\<app>\<Level>\<Room>\<item>.json`, `Project Saves\UTZLINE ITP\<app> Log\<Level>\<Room>\<item>\`, `PDFs\ITPs\<Install|Manufacture|Delivery>\<Level>\<Room>\<item>\`, `Project Saves\Site Measures\<Level>\<Room>\<page>\`, `Project Saves\UTZLINE Sub Orders\Orders\<Level>\<Room>\<item>\` (the order list and its files). <Room> is the room number. Fresh install: no older folders or older-project layouts are read (Andrew: *"I DONT WANT BACKWRDS COMPATIBILITY. i am starting brand new"*).
 
